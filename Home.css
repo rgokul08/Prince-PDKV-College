@@ -16,7 +16,7 @@ header {
     margin-bottom: 20px;
     border-radius: 0 0 20px 20px;
     background-color: rgba(255, 255, 255, 0.514);
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(8px);
 }
 
 #Prince {
@@ -87,7 +87,7 @@ h2 {
 
 #content {
     background-color: rgba(255, 255, 255, 0.518);
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(7px);
     padding: 30px;
     border-radius: 20px;
     max-width: 800px;
@@ -113,7 +113,7 @@ h2 {
 /* Auth Forms */
 .auth-form {
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.708), rgba(255, 255, 255, 0.776));
-    backdrop-filter: blur(15px);
+    backdrop-filter: blur(10px);
     border-radius: 20px;
     padding: 35px;
     box-shadow: 0 15px 35px rgba(0,0,0,0.2);
@@ -239,7 +239,7 @@ h2 {
 
 .alert-box {
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.664), rgba(255,255,255,0.85));
-    backdrop-filter: blur(15px);
+    backdrop-filter: blur(10px);
     border-radius: 20px;
     padding: 35px;
     max-width: 450px;
