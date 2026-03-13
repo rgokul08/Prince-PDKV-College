@@ -1,74 +1,79 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Courses</title>
-    <link
-      rel="shortcut icon"
-      href="https://yt3.googleusercontent.com/ytc/AIdro_k_qv60q5J-ADkI2QNCezEuT1zrK5KTSCIZMtIrhxphKU8=s900-c-k-c0x00ffffff-no-rj"
-      type="image/x-icon"
-    />
-    <link rel="stylesheet" href="Courses.css" />
-  </head>
-  <body>
-    <header>
-      <h1 id="Prince">
-        Prince DrK Vasudevan college of Engineering and Technology
-      </h1>
-      <img
-        src="https://yt3.googleusercontent.com/ytc/AIdro_k_qv60q5J-ADkI2QNCezEuT1zrK5KTSCIZMtIrhxphKU8=s900-c-k-c0x00ffffff-no-rj"
-        alt="logo"
-        width="80px"
-        height="80px"
-        id="logoimg"
-      />
-      <nav id="navbar">
-        <a href="Home.html" class="a1">🏠 Home</a>
-        <a href="Courses.html" class="a2">📚 Courses</a>
-        <a href="TimeTable.html" class="a3">⏰ Time Table</a>
-        <a href="Faculty.html" class="a4">👨‍🏫 Faculty</a>
-        <a href="About.html" class="a5">ℹ️ About Us</a>
-      </nav>
-    </header>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Courses - Prince DrK Vasudevan College</title>
+  <link rel="shortcut icon" href="https://yt3.googleusercontent.com/ytc/AIdro_k_qv60q5J-ADkI2QNCezEuT1zrK5KTSCIZMtIrhxphKU8=s900-c-k-c0x00ffffff-no-rj" type="image/x-icon">
+  <link rel="stylesheet" href="Courses.css">
+</head>
+<body>
+  <header>
+    <h1 id="Prince">Prince DrK Vasudevan College of Engineering and Technology</h1>
+    <img src="https://yt3.googleusercontent.com/ytc/AIdro_k_qv60q5J-ADkI2QNCezEuT1zrK5KTSCIZMtIrhxphKU8=s900-c-k-c0x00ffffff-no-rj" alt="logo" id="logoimg">
+    <nav id="navbar">
+      <a href="Home.html" class="a1">🏠 Home</a>
+      <a href="Courses.html" class="a2 active">📚 Courses</a>
+      <a href="TimeTable.html" class="a3">⏰ Time Table</a>
+      <a href="Faculty.html" class="a4">👨‍🏫 Faculty</a>
+      <a href="About.html" class="a5">ℹ️ About Us</a>
+    </nav>
+  </header>
 
-    <div id="Courses-content">
-      <h2>Our Courses</h2>
-
-      <div class="co1">
-        Bachelor of Technology (B.Tech) in Computer Science and Engineering <br>
-        <img src="https://ddn.gehu.ac.in/uploads/image/Nw1oCYC1-trending-course-gehu-1-jpg.webp" alt="cse" width="200px" height="120px"/>
+  <div id="Courses-content">
+    <h2>Our Courses</h2>
+    <div class="courses-grid">
+      <div class="course-card co1" data-course="btech-cse">
+        <img src="https://ddn.gehu.ac.in/uploads/image/Nw1oCYC1-trending-course-gehu-1-jpg.webp" alt="CSE">
+        <h3>B.Tech Computer Science and Engineering</h3>
       </div>
-      <div class="co2">
-        Bachelor of Technology in Electronics and Communication Engineering <br>
-        <img src="https://sru.edu.in/assets/schools/ece/ece.png" alt="ece" width="200px" height="120px"/>
+      <div class="course-card co2" data-course="btech-ece">
+        <img src="https://sru.edu.in/assets/schools/ece/ece.png" alt="ECE">
+        <h3>B.Tech Electronics & Communication Engineering</h3>
       </div>
-      <div class="co3">Bachelor of Technology (B.Tech) in Mechanical Engineering <br>
-        <img src="https://cache.careers360.mobi/media/article_images/2020/5/6/B-Tech-in-Mechanical-and-Automation-Engineering.jpg" alt="mech" width="200px" height="120px"/>
+      <div class="course-card co3" data-course="btech-mech">
+        <img src="https://cache.careers360.mobi/media/article_images/2020/5/6/B-Tech-in-Mechanical-and-Automation-Engineering.jpg" alt="Mechanical">
+        <h3>B.Tech Mechanical Engineering</h3>
       </div>
-      <div class="co4">Bachelor of Technology (B.Tech) in Civil Engineering <br>
-        <img src="https://sijoul.sandipuniversity.edu.in/engineering-technology/images/header/UG/Civil.jpg" alt="civil" width="200px" height="120px"/>
+      <div class="course-card co4" data-course="btech-civil">
+        <img src="https://sijoul.sandipuniversity.edu.in/engineering-technology/images/header/UG/Civil.jpg" alt="Civil">
+        <h3>B.Tech Civil Engineering</h3>
       </div>
-      <div class="co5">
-        Master of Technology (M.Tech) in Computer Science and Engineering <br>
-        <img src="https://theredpen.in/wp-content/uploads/2024/09/medium-shot-man-wearing-vr-glasses-1-scaled.jpg" alt="m.tech" width="200px" height="120px"/>
+      <div class="course-card co5" data-course="mtech-cse">
+        <img src="https://theredpen.in/wp-content/uploads/2024/09/medium-shot-man-wearing-vr-glasses-1-scaled.jpg" alt="M.Tech CSE">
+        <h3>M.Tech Computer Science and Engineering</h3>
       </div>
-      <div class="co6">Master of Technology (M.Tech) in VLSI Design  <br><img src="https://electronics.kiit.ac.in/wp-content/uploads/2022/05/VLSI.jpg" alt="vlsi" width="200px" height="120px"></div>
-      <div class="co7">Master of Business Administration (MBA) <br>
-        <img src="https://media.istockphoto.com/id/1159875854/photo/mba-with-man.jpg?s=612x612&w=0&k=20&c=fm3BxaCV0OksY-P-khvO7mv1jdWLYHFlYEPaHEvZlVo=" alt="mba" width="200px" height="120px"/>
+      <div class="course-card co6" data-course="mtech-vlsi">
+        <img src="https://www.msruas.ac.in/assets/frontend/images/oview-img-vlsi.webp" alt="VLSI">
+        <h3>M.Tech VLSI Design</h3>
       </div>
-      <div class="co8">Arts and Humanities <br>
-        <img src="https://t3.ftcdn.net/jpg/16/92/35/14/360_F_1692351410_kBjDpoScGMXZf0ZA28VEKTWLTV5KnO6P.jpg" alt="arts" width="200px" height="120px"/>
+      <div class="course-card co7" data-course="mba">
+        <img src="https://media.istockphoto.com/id/1159875854/photo/mba-with-man.jpg?s=612x612&w=0&k=20&c=fm3BxaCV0OksY-P-khvO7mv1jdWLYHFlYEPaHEvZlVo=" alt="MBA">
+        <h3>Master of Business Administration (MBA)</h3>
       </div>
-
+      <div class="course-card co8" data-course="arts">
+        <img src="https://t3.ftcdn.net/jpg/16/92/35/14/360_F_1692351410_kBjDpoScGMXZf0ZA28VEKTWLTV5KnO6P.jpg" alt="Arts">
+        <h3>Arts and Humanities</h3>
+      </div>
     </div>
-    <footer>
-      <p>&copy; 2026 Prince DrK Vasudevan college of Engineering and Technology</p>
-    </footer>
-    
-    <script>
-      window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
-    </script>
-    <script defer src="/_vercel/speed-insights/script.js"></script>
-  </body>
+  </div>
+
+  <!-- Modal for course details -->
+  <div id="course-modal" class="modal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <div id="course-details">
+        <h2 id="modal-title"></h2>
+        <p id="modal-description"></p>
+        <a id="course-link" href="#" target="_blank">Learn More</a>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>&copy; 2026 Prince DrK Vasudevan College of Engineering and Technology</p>
+  </footer>
+
+  <script src="Courses.js"></script>
+</body>
 </html>
