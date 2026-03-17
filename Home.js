@@ -1,7 +1,7 @@
 // ==================== SUPABASE CONFIG ====================
 // CHANGE THESE TWO LINES WITH YOUR REAL SUPABASE DETAILS
 const SUPABASE_URL = 'https://zsuonqltlodkzrqlhsnm.supabase.co';     // ← Your URL
-const SUPABASE_ANON_KEY = 'sb_publishable_GPhUq8fpXNSAHkYRSMLBcQ_ST0r9c5R'; // ← Your anon key
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzdW9ucWx0bG9ka3pycWxoc25tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1ODUwNzAsImV4cCI6MjA4OTE2MTA3MH0.Ea8xTDxxp6GaDfUNuByjkQaUcFxJPrdO1VrzG06cTH4'; // ← Your anon key
 
 // Wait until Supabase is fully loaded from CDN
 function initSupabase() {
