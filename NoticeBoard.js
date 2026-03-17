@@ -1,65 +1,39 @@
-// NoticeBoard.js - Full Code with Persistent Login Across Pages
+// NoticeBoard.js - FULL FIXED CODE (All buttons working)
 
 let currentUser = null;
 let notices = [];
 let currentFilter = 'all';
 
-// ==================== INITIALIZE ====================
+// ==================== INIT ====================
 document.addEventListener('DOMContentLoaded', async () => {
     await checkAuth();
     await loadNotices();
     setupFilters();
     setupRealtime();
-
-    // Listen for auth changes from other pages/tabs
-    supabase.auth.onAuthStateChange((event, session) => {
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-            currentUser = session.user;
-            updateUIAfterAuth();
-        } else if (event === 'SIGNED_OUT') {
-            currentUser = null;
-            updateUIAfterAuth();
-        }
-    });
+    setupFormListeners();
 });
 
-// ==================== AUTHENTICATION ====================
+// ==================== AUTH ====================
 async function checkAuth() {
     const { data: { session } } = await supabase.auth.getSession();
-    
     if (session) {
         currentUser = session.user;
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', currentUser.id)
-            .single();
-
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', currentUser.id).single();
         currentUser.profile = profile || {};
     }
     updateUIAfterAuth();
 }
 
 function updateUIAfterAuth() {
-    const loginBtn = document.getElementById('loginBtn');
-    const signupBtn = document.getElementById('signupBtn');
-    const logoutBtn = document.getElementById('logoutBtn');
-    const userInfo = document.getElementById('userInfo');
-    const addNoticeBtn = document.getElementById('addNoticeBtn');
+    document.getElementById('loginBtn').style.display = currentUser ? 'none' : 'inline';
+    document.getElementById('signupBtn').style.display = currentUser ? 'none' : 'inline';
+    document.getElementById('logoutBtn').style.display = currentUser ? 'inline' : 'none';
+    document.getElementById('addNoticeBtn').style.display = currentUser ? 'inline' : 'none';
 
+    const userInfo = document.getElementById('userInfo');
+    userInfo.style.display = currentUser ? 'inline' : 'none';
     if (currentUser) {
-        loginBtn.style.display = 'none';
-        signupBtn.style.display = 'none';
-        userInfo.style.display = 'inline';
         userInfo.textContent = `Hi, ${currentUser.profile?.name || currentUser.email.split('@')[0]}!`;
-        logoutBtn.style.display = 'inline';
-        addNoticeBtn.style.display = 'inline';
-    } else {
-        loginBtn.style.display = 'inline';
-        signupBtn.style.display = 'inline';
-        userInfo.style.display = 'none';
-        logoutBtn.style.display = 'none';
-        addNoticeBtn.style.display = 'none';
     }
 }
 
@@ -69,7 +43,6 @@ async function logout() {
     updateUIAfterAuth();
 }
 
-// ==================== AUTH MODAL ====================
 function showAuth(type) {
     const modal = document.getElementById('authModal');
     const title = document.getElementById('authTitle');
@@ -93,46 +66,85 @@ function showAuth(type) {
     modal.style.display = 'block';
 }
 
-document.getElementById('toggleAuth').onclick = function(e) {
-    e.preventDefault();
-    const currentType = document.getElementById('authForm').dataset.type;
-    showAuth(currentType === 'signup' ? 'login' : 'signup');
-};
+// ==================== FORM LISTENERS ====================
+function setupFormListeners() {
+    // Auth Form
+    document.getElementById('authForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const type = e.target.dataset.type;
+        const email = document.getElementById('authEmail').value.trim();
+        const password = document.getElementById('authPassword').value;
 
-document.getElementById('authForm').onsubmit = async function(e) {
-    e.preventDefault();
-    const type = this.dataset.type;
-    const email = document.getElementById('authEmail').value.trim();
-    const password = document.getElementById('authPassword').value;
+        if (type === 'signup') {
+            const { data, error } = await supabase.auth.signUp({ email, password });
+            if (error) return showAlert(error.message, 'error');
 
-    if (type === 'signup') {
-        const { data, error } = await supabase.auth.signUp({ email, password });
-        if (error) return showAlert(error.message, 'error');
+            await supabase.from('profiles').insert({
+                id: data.user.id,
+                name: document.getElementById('authName').value,
+                regno: document.getElementById('authRegno').value,
+                phone: document.getElementById('authPhone').value
+            });
+            showAlert('Account created successfully!');
+        } else {
+            const { error } = await supabase.auth.signInWithPassword({ email, password });
+            if (error) return showAlert(error.message, 'error');
+            showAlert('Login successful!');
+        }
+        closeModal('authModal');
+        await checkAuth();
+    };
 
-        await supabase.from('profiles').insert({
-            id: data.user.id,
-            name: document.getElementById('authName').value,
-            regno: document.getElementById('authRegno').value,
-            phone: document.getElementById('authPhone').value
-        });
-        showAlert('Account created successfully! Please login.');
-    } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) return showAlert(error.message, 'error');
-        showAlert('Login successful!');
-    }
+    // Add Notice Form
+    document.getElementById('addNoticeForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const newNotice = {
+            id: 'notice_' + Date.now(),
+            title: document.getElementById('noticeTitle').value,
+            type: document.getElementById('noticeType').value,
+            date: document.getElementById('noticeDate').value,
+            time: document.getElementById('noticeTime').value || null,
+            "desc": document.getElementById('noticeDesc').value,
+            registrations: [],
+            created_by: currentUser?.id
+        };
 
-    closeModal('authModal');
-    await checkAuth();
-};
+        const { error } = await supabase.from('notices').insert(newNotice);
+        if (error) return showAlert('Failed to add: ' + error.message, 'error');
+
+        showAlert('Notice added successfully! Visible to everyone.');
+        closeModal('addNoticeModal');
+    };
+
+    // Register Form
+    document.getElementById('registerForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const noticeId = document.getElementById('registerModal').dataset.noticeId;
+        const notice = notices.find(n => n.id === noticeId);
+
+        const regData = {
+            name: document.getElementById('regName').value,
+            year: document.getElementById('regYear').value,
+            dept: document.getElementById('regDept').value,
+            regno: document.getElementById('regRegno').value,
+            phone: document.getElementById('regPhone').value,
+            email: currentUser.email
+        };
+
+        const updatedRegs = [...(notice.registrations || []), regData];
+
+        const { error } = await supabase.from('notices').update({ registrations: updatedRegs }).eq('id', noticeId);
+        if (error) return showAlert('Registration failed', 'error');
+
+        showAlert('Registration successful!');
+        closeModal('registerModal');
+        loadNotices();
+    };
+}
 
 // ==================== NOTICES ====================
 async function loadNotices() {
-    const { data, error } = await supabase
-        .from('notices')
-        .select('*')
-        .order('date', { ascending: true });
-
+    const { data, error } = await supabase.from('notices').select('*').order('date', { ascending: true });
     if (error) return showAlert('Failed to load notices', 'error');
     notices = data || [];
     renderNotices();
@@ -159,7 +171,7 @@ function createNoticeCard(notice) {
                 ${notice.time || 'All Day'} | 
                 👥 ${registrations.length} registered
             </div>
-            <p class="notice-desc">${notice.desc}</p>
+            <p class="notice-desc">${notice.desc || notice["desc"] || ''}</p>
             <button class="action-btn ${isRegistered ? 'registered-btn' : 'register-btn'}" 
                     onclick="handleAction('${notice.id}', '${notice.type}')">
                 ${btnText}
@@ -179,39 +191,14 @@ function setupFilters() {
     });
 }
 
-// Real-time updates
 function setupRealtime() {
     supabase.channel('notices-channel')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'notices' }, () => {
-            loadNotices();
-        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'notices' }, loadNotices)
         .subscribe();
 }
 
-// ==================== ADD NOTICE ====================
-document.getElementById('addNoticeForm').onsubmit = async function(e) {
-    e.preventDefault();
-
-    const newNotice = {
-        id: 'notice_' + Date.now(),
-        title: document.getElementById('noticeTitle').value,
-        type: document.getElementById('noticeType').value,
-        date: document.getElementById('noticeDate').value,
-        time: document.getElementById('noticeTime').value || null,
-        desc: document.getElementById('noticeDesc').value,
-        registrations: [],
-        created_by: currentUser?.id
-    };
-
-    const { error } = await supabase.from('notices').insert(newNotice);
-    if (error) return showAlert('Failed to add notice: ' + error.message, 'error');
-
-    showAlert('Notice added successfully! Visible to all users.');
-    closeModal('addNoticeModal');
-};
-
-// ==================== REGISTER ====================
-function handleAction(noticeId, type) {
+// ==================== ACTION FUNCTIONS ====================
+window.handleAction = function(noticeId, type) {
     if (!currentUser && type !== 'notice') {
         showAuth('login');
         return;
@@ -221,44 +208,23 @@ function handleAction(noticeId, type) {
         return;
     }
     showRegisterModal(noticeId);
-}
+};
 
 function showRegisterModal(noticeId) {
     const notice = notices.find(n => n.id === noticeId);
+    if (!notice) return;
     document.getElementById('noticeTitleReg').textContent = notice.title;
-    document.getElementById('noticeDetailsReg').textContent = `${notice.date} | ${notice.desc}`;
+    document.getElementById('noticeDetailsReg').textContent = `${notice.date} | ${notice.desc || notice["desc"]}`;
     document.getElementById('registerModal').dataset.noticeId = noticeId;
     document.getElementById('registerModal').style.display = 'block';
 }
 
-document.getElementById('registerForm').onsubmit = async function(e) {
-    e.preventDefault();
-    const noticeId = document.getElementById('registerModal').dataset.noticeId;
-    const notice = notices.find(n => n.id === noticeId);
+function showAddNotice() {
+    if (!currentUser) return showAlert('Please login first', 'error');
+    document.getElementById('addNoticeModal').style.display = 'block';
+}
 
-    const regData = {
-        name: document.getElementById('regName').value,
-        year: document.getElementById('regYear').value,
-        dept: document.getElementById('regDept').value,
-        regno: document.getElementById('regRegno').value,
-        phone: document.getElementById('regPhone').value,
-        email: currentUser.email
-    };
-
-    const updatedRegs = [...(notice.registrations || []), regData];
-
-    const { error } = await supabase
-        .from('notices')
-        .update({ registrations: updatedRegs })
-        .eq('id', noticeId);
-
-    if (error) return showAlert('Registration failed', 'error');
-
-    showAlert('Registration successful!');
-    closeModal('registerModal');
-};
-
-// ==================== MODALS & ALERTS ====================
+// ==================== UTILS ====================
 function closeModal(id) {
     document.getElementById(id).style.display = 'none';
 }
