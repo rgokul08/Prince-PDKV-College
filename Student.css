@@ -1,10 +1,10 @@
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-    background-image: url('https://t4.ftcdn.net/jpg/06/30/76/11/360_F_630761173_Hkeqf7J3DYfICjQQaMkTiSpCOK7XOq1q.jpg');
-    background-size: cover;
-    background-attachment: fixed;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    color: #333;
+#logoimg {
+    width: 80px;
+    height: 80px;
+    border-radius: 25%;
+    vertical-align: middle;
+    padding: 5px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
 }
 
 header {
@@ -17,150 +17,208 @@ header {
     backdrop-filter: blur(8px);
 }
 
-#logoimg {
-    width: 80px; height: 80px;
-    border-radius: 25%;
-    vertical-align: middle;
-    padding: 5px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-}
-
 #Prince {
     text-shadow: 2px 3px 3px gray;
     color: #2c3e50;
-    font-size: 26px;
     margin-bottom: 10px;
+    font-size: 24px;
+}
+
+body {
+    background-image: url('https://t4.ftcdn.net/jpg/06/30/76/11/360_F_630761173_Hkeqf7J3DYfICjQQaMkTiSpCOK7XOq1q.jpg');
+    background-repeat: no-repeat;
+    background-size: cover;
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+#navbar {
+    margin-top: 15px;
 }
 
 #navbar a {
     color: #2c3e50;
+    text-align: center;
     padding: 12px 20px;
     font-weight: bold;
     text-decoration: none;
     display: inline-block;
     border-radius: 10px;
     margin: 0 5px;
-    background: rgba(255, 255, 255, 0.516);
     transition: all 0.3s ease;
+    background: rgba(255, 255, 255, 0.516);
 }
 
-#navbar a:hover {
+#navbar a:hover, #navbar a.active {
     background: linear-gradient(45deg, #4CAF50, #45a049);
     color: white;
     transform: translateY(-3px);
     box-shadow: 0 5px 15px rgba(76,175,80,0.4);
 }
 
-#student-content, #form-container, #students-list {
-    background-color: rgba(255, 255, 255, 0.514);
-    padding: 25px;
-    border-radius: 15px;
-    max-width: 1100px;
-    margin: 20px auto;
-    text-align: center;
+#form-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
 }
 
-.form-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 15px;
-    text-align: left;
+#student-form-section, #student-display-section {
+    background-color: rgba(255, 255, 255, 0.9);
+    padding: 30px;
+    border-radius: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
 }
 
-label { font-weight: bold; display: block; margin-bottom: 5px; }
-input, select {
+.form-group {
+    margin-bottom: 25px;
+}
+
+.form-group h3 {
+    color: #2c3e50;
+    border-bottom: 2px solid #4CAF50;
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+}
+
+#studentForm input, #studentForm select {
     width: 100%;
-    padding: 10px;
-    border: 2px solid #333;
+    padding: 12px;
+    margin: 8px 0;
+    border: 2px solid #ddd;
     border-radius: 8px;
     font-size: 16px;
+    box-sizing: border-box;
 }
 
-.image-section img {
-    width: 130px;
-    height: 130px;
-    object-fit: cover;
-    border-radius: 10px;
-    margin-top: 10px;
-    border: 3px solid #4CAF50;
+#studentForm input:focus, #studentForm select:focus {
+    border-color: #4CAF50;
+    outline: none;
+    box-shadow: 0 0 10px rgba(76,175,80,0.3);
 }
 
-h4 { margin: 20px 0 10px; text-align: left; }
-
-#exam-list .exam-entry {
-    display: grid;
-    grid-template-columns: 2fr 1fr 1fr 1fr auto;
+.exam-entry {
+    display: flex;
     gap: 10px;
-    margin: 12px 0;
-    align-items: end;
+    margin-bottom: 10px;
+    align-items: center;
+}
+
+.exam-entry input, .exam-entry select {
+    flex: 1;
 }
 
 .remove-exam {
-    background: #e74c3c;
+    background: #f44336;
     color: white;
     border: none;
-    padding: 8px 12px;
-    border-radius: 6px;
-    cursor: pointer;
-}
-
-#submit-btn {
-    background: #27ae60;
-    color: white;
-    font-size: 18px;
-    padding: 14px;
-    width: 100%;
-    margin-top: 25px;
-    border: none;
-    border-radius: 10px;
-    cursor: pointer;
-}
-
-#submit-btn:hover { background: #219653; }
-
-.attendance {
-    font-size: 22px;
-    font-weight: bold;
-    color: #27ae60;
-    display: block;
     padding: 10px;
-    background: rgba(255,255,255,0.7);
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+#addExamBtn {
+    background: linear-gradient(45deg, #2196F3, #21CBF3);
+    color: white;
+    border: none;
+    padding: 12px 25px;
+    border-radius: 25px;
+    cursor: pointer;
+    font-size: 16px;
+    margin-top: 10px;
+}
+
+#submitBtn {
+    background: linear-gradient(45deg, #4CAF50, #45a049);
+    color: white;
+    border: none;
+    padding: 15px 40px;
+    border-radius: 25px;
+    font-size: 18px;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 20px;
+}
+
+#submitBtn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 20px rgba(76,175,80,0.4);
+}
+
+#attendancePercentage {
+    font-size: 18px;
+    font-weight: bold;
+    color: #4CAF50;
+    margin-top: 10px;
+    padding: 10px;
+    background: rgba(76,175,80,0.1);
     border-radius: 8px;
 }
 
-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 15px;
-    background: white;
+#studentProfile {
+    background: rgba(255,255,255,0.95);
+    border-radius: 15px;
+    padding: 20px;
 }
 
-th, td {
-    border: 3px solid #333;
-    padding: 12px;
+.student-image {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 5px solid #4CAF50;
+    margin-bottom: 20px;
+}
+
+.student-info {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.info-item {
+    background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
+    padding: 15px;
+    border-radius: 10px;
     text-align: center;
 }
 
-th { background: #2c3e50; color: white; }
-
-td img {
-    width: 55px;
-    height: 55px;
-    object-fit: cover;
-    border-radius: 50%;
+.info-label {
+    font-weight: bold;
+    color: #2c3e50;
+    margin-bottom: 5px;
 }
 
-.edit-btn { background: #3498db; margin-right: 5px; }
-.delete-btn { background: #e74c3c; }
+.info-value {
+    color: #4CAF50;
+    font-size: 16px;
+}
 
-button { cursor: pointer; padding: 8px 15px; border: none; border-radius: 6px; color: white; }
+.exams-grid, .attendance-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+}
 
 footer {
     text-align: center;
-    padding: 15px;
-    margin-top: 30px;
+    padding: 10px;
+    margin-top: 20px;
+    border-top: 2px solid rgba(0, 0, 0, 0.637);
     background-color: rgba(255, 255, 255, 0.616);
     border-radius: 20px 20px 0 0;
-    font-weight: bold;
+    font-size: 18px;
     color: #555;
+    font-weight: bolder;
+}
+
+@media (max-width: 768px) {
+    .exam-entry {
+        flex-direction: column;
+    }
+    
+    #form-container {
+        padding: 10px;
+    }
 }

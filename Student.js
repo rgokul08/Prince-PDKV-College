@@ -1,194 +1,248 @@
-// Student.js
-const form = document.getElementById('student-form');
-const tableBody = document.querySelector('#students-table tbody');
-let editingRegNo = null;
-let currentImageUrl = '';
-
+// Initialize Supabase
 const supabase = window.supabase;
 
+// DOM Elements
+const studentForm = document.getElementById('studentForm');
+const studentImageInput = document.getElementById('studentImage');
+const examDetails = document.getElementById('examDetails');
+const addExamBtn = document.getElementById('addExamBtn');
+const totalDays = document.getElementById('totalDays');
+const presentDays = document.getElementById('presentDays');
+const absentDays = document.getElementById('absentDays');
+const attendancePercentage = document.getElementById('attendancePercentage');
+const formSection = document.getElementById('student-form-section');
+const displaySection = document.getElementById('student-display-section');
+const studentProfile = document.getElementById('studentProfile');
+
+// Attendance calculation
 function calculateAttendance() {
-    const total = parseFloat(document.getElementById('total_days').value) || 0;
-    const present = parseFloat(document.getElementById('present_days').value) || 0;
-    const perc = total > 0 ? ((present / total) * 100).toFixed(2) : 0;
-    document.getElementById('attendance_display').textContent = perc + ' %';
+    const total = parseInt(totalDays.value) || 0;
+    const present = parseInt(presentDays.value) || 0;
+    const absent = parseInt(absentDays.value) || 0;
+    
+    if (total > 0) {
+        const percentage = ((present / total) * 100).toFixed(2);
+        attendancePercentage.innerHTML = `Attendance: ${percentage}%`;
+        absentDays.value = total - present;
+    }
 }
 
-['total_days', 'present_days'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('input', calculateAttendance);
-});
+totalDays.addEventListener('input', calculateAttendance);
+presentDays.addEventListener('input', calculateAttendance);
 
-document.getElementById('image-upload').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) {
-        document.getElementById('preview-img').src = URL.createObjectURL(file);
-    }
-});
-
-document.getElementById('add-exam-btn').addEventListener('click', () => {
-    const div = document.createElement('div');
-    div.className = 'exam-entry';
-    div.innerHTML = `
-        <input type="text" class="subject" placeholder="Subject Name" required>
-        <input type="number" class="marks" placeholder="Marks" required>
-        <select class="type">
-            <option value="SEM">SEM</option>
-            <option value="CIAT">CIAT</option>
-        </select>
-        <select class="status">
+// Add exam fields
+let examCount = 1;
+addExamBtn.addEventListener('click', () => {
+    const examEntry = document.createElement('div');
+    examEntry.className = 'exam-entry';
+    examEntry.innerHTML = `
+        <input type="text" class="exam-subject" placeholder="Subject Name">
+        <input type="number" class="exam-marks" placeholder="Marks" min="0">
+        <select class="exam-result">
+            <option value="">Pass/Fail</option>
             <option value="Pass">Pass</option>
             <option value="Fail">Fail</option>
         </select>
-        <button type="button" class="remove-exam">Remove</button>
+        <select class="exam-type">
+            <option value="">Sem/CIA</option>
+            <option value="Semester">Semester</option>
+            <option value="CIA">CIA</option>
+        </select>
+        <button type="button" class="remove-exam" onclick="removeExam(this)">❌</button>
     `;
-    document.getElementById('exam-list').appendChild(div);
-    
-    div.querySelector('.remove-exam').onclick = () => div.remove();
+    examDetails.appendChild(examEntry);
+    examCount++;
 });
 
-function getExamDetails() {
-    const exams = [];
-    document.querySelectorAll('.exam-entry').forEach(entry => {
-        exams.push({
-            subject: entry.querySelector('.subject').value,
-            mark: parseFloat(entry.querySelector('.marks').value),
-            type: entry.querySelector('.type').value,
-            status: entry.querySelector('.status').value
-        });
-    });
-    return exams;
+function removeExam(button) {
+    button.parentElement.remove();
 }
 
-async function loadStudents() {
-    const { data, error } = await supabase.from('student_information').select('*').order('register_no');
-    if (error) return console.error(error);
-
-    tableBody.innerHTML = '';
-    data.forEach(student => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${student.image_url ? `<img src="${student.image_url}" alt="photo">` : 'No Image'}</td>
-            <td>${student.name}</td>
-            <td>${student.register_no}</td>
-            <td>${student.department}</td>
-            <td>${student.year}</td>
-            <td>${student.attendance_percentage}%</td>
-            <td>
-                <button class="edit-btn">Edit</button>
-                <button class="delete-btn">Delete</button>
-            </td>
-        `;
-        tr.querySelector('.edit-btn').onclick = () => editStudent(student);
-        tr.querySelector('.delete-btn').onclick = () => deleteStudent(student.register_no);
-        tableBody.appendChild(tr);
-    });
-}
-
-async function deleteStudent(regNo) {
-    if (!confirm('Are you sure you want to delete this student?')) return;
-    await supabase.from('student_information').delete().eq('register_no', regNo);
-    loadStudents();
-}
-
-function editStudent(student) {
-    editingRegNo = student.register_no;
-    document.getElementById('form-title').textContent = 'Edit Student';
-
-    document.getElementById('register_no').value = student.register_no;
-    document.getElementById('register_no').readOnly = true;
-
-    document.getElementById('name').value = student.name || '';
-    document.getElementById('guardian').value = student.guardian_name || '';
-    document.getElementById('department').value = student.department || '';
-    document.getElementById('year').value = student.year || '';
-    document.getElementById('phone').value = student.phone_no || '';
-    document.getElementById('email').value = student.email_id || '';
-    document.getElementById('linkedin').value = student.linkedin_link || '';
-    document.getElementById('github').value = student.github_link || '';
-    document.getElementById('dob').value = student.date_of_birth || '';
-    document.getElementById('total_days').value = student.total_days || 0;
-    document.getElementById('present_days').value = student.present_days || 0;
-    document.getElementById('absent_days').value = student.absent_days || 0;
-
-    currentImageUrl = student.image_url || '';
-    document.getElementById('preview-img').src = currentImageUrl || '';
-
-    document.getElementById('exam-list').innerHTML = '';
-    (student.exam_details || []).forEach(ex => {
-        const div = document.createElement('div');
-        div.className = 'exam-entry';
-        div.innerHTML = `
-            <input type="text" class="subject" value="${ex.subject}">
-            <input type="number" class="marks" value="${ex.mark}">
-            <select class="type"><option value="SEM" ${ex.type==='SEM'?'selected':''}>SEM</option><option value="CIAT" ${ex.type==='CIAT'?'selected':''}>CIAT</option></select>
-            <select class="status"><option value="Pass" ${ex.status==='Pass'?'selected':''}>Pass</option><option value="Fail" ${ex.status==='Fail'?'selected':''}>Fail</option></select>
-            <button type="button" class="remove-exam">Remove</button>
-        `;
-        document.getElementById('exam-list').appendChild(div);
-        div.querySelector('.remove-exam').onclick = () => div.remove();
-    });
-
-    calculateAttendance();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-// Form Submit
-form.addEventListener('submit', async (e) => {
+// Form submission
+studentForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    
+    // Format DOB to dd-mm-yyyy
+    const dobInput = document.getElementById('dob').value;
+    const dob = new Date(dobInput).toLocaleDateString('en-GB');
+    
+    // Collect exam data
+    const examEntries = document.querySelectorAll('.exam-entry');
+    const exams = Array.from(examEntries).map(entry => ({
+        subject: entry.querySelector('.exam-subject').value,
+        marks: entry.querySelector('.exam-marks').value,
+        result: entry.querySelector('.exam-result').value,
+        type: entry.querySelector('.exam-type').value
+    })).filter(exam => exam.subject && exam.marks);
 
-    let imageUrl = currentImageUrl;
-    const file = document.getElementById('image-upload').files[0];
-
-    if (file) {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${document.getElementById('register_no').value}.${fileExt}`;
-
-        const { error: uploadErr } = await supabase.storage
-            .from('Image_files')
-            .upload(`Student_images/${fileName}`, file, { upsert: true });
-
-        if (uploadErr) return alert('Image upload failed: ' + uploadErr.message);
-
-        const { data } = supabase.storage.from('Image_files').getPublicUrl(`Student_images/${fileName}`);
-        imageUrl = data.publicUrl;
-    }
-
-    const studentData = {
-        register_no: document.getElementById('register_no').value.trim(),
-        name: document.getElementById('name').value,
-        guardian_name: document.getElementById('guardian').value,
+    const formData = {
+        name: document.getElementById('studentName').value,
+        guardian_name: document.getElementById('guardianName').value,
+        register_no: document.getElementById('registerNo').value,
         department: document.getElementById('department').value,
-        year: parseInt(document.getElementById('year').value),
-        phone_no: document.getElementById('phone').value,
-        email_id: document.getElementById('email').value,
-        linkedin_link: document.getElementById('linkedin').value,
-        github_link: document.getElementById('github').value,
-        date_of_birth: document.getElementById('dob').value || null,
-        exam_details: getExamDetails(),
-        total_days: parseInt(document.getElementById('total_days').value) || 0,
-        present_days: parseInt(document.getElementById('present_days').value) || 0,
-        absent_days: parseInt(document.getElementById('absent_days').value) || 0,
-        image_url: imageUrl
+        year: document.getElementById('year').value,
+        phone: document.getElementById('phone').value,
+        email: document.getElementById('email').value,
+        linkedin: document.getElementById('linkedin').value || null,
+        github: document.getElementById('github').value || null,
+        dob: dob,
+        total_days: parseInt(totalDays.value),
+        present_days: parseInt(presentDays.value),
+        absent_days: parseInt(absentDays.value),
+        attendance_percentage: ((parseInt(presentDays.value) / parseInt(totalDays.value)) * 100).toFixed(2),
+        exam_details: exams
     };
 
-    const { error } = await supabase
-        .from('student_information')
-        .upsert(studentData, { onConflict: 'register_no' });
+    try {
+        // Check for duplicate register number
+        const { data: existing } = await supabase
+            .from('student_information')
+            .select('register_no')
+            .eq('register_no', formData.register_no)
+            .single();
 
-    if (error) {
+        if (existing) {
+            alert('Register number already exists!');
+            return;
+        }
+
+        // Upload image
+        let imageUrl = null;
+        if (studentImageInput.files[0]) {
+            const file = studentImageInput.files[0];
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${formData.register_no}.${fileExt}`;
+            
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from('Image_files')
+                .from('Student_images')
+                .upload(fileName, file);
+
+            if (uploadError) throw uploadError;
+            
+            const { data: publicUrl } = supabase.storage
+                .from('Image_files')
+                .getPublicUrl(`Student_images/${fileName}`);
+            imageUrl = publicUrl.data.publicUrl;
+        }
+
+        // Insert student data
+        const { data, error } = await supabase
+            .from('student_information')
+            .insert([{ ...formData, image_url: imageUrl }])
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // Display student profile
+        displayStudentProfile(data);
+        formSection.style.display = 'none';
+        
+    } catch (error) {
+        console.error('Error:', error);
         alert('Error saving data: ' + error.message);
-    } else {
-        alert('✅ Student data saved successfully!');
-        form.reset();
-        document.getElementById('preview-img').src = '';
-        document.getElementById('exam-list').innerHTML = '';
-        document.getElementById('form-title').textContent = 'Add New Student';
-        document.getElementById('register_no').readOnly = false;
-        editingRegNo = null;
-        currentImageUrl = '';
-        loadStudents();
     }
 });
 
-// Load students when page opens
-loadStudents();
+function displayStudentProfile(student) {
+    studentProfile.innerHTML = `
+        <img src="${student.image_url}" alt="${student.name}" class="student-image" onerror="this.src='https://via.placeholder.com/150?text=Photo'">
+        <div class="student-info">
+            <div class="info-item">
+                <div class="info-label">Name</div>
+                <div class="info-value">${student.name}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Register No</div>
+                <div class="info-value">${student.register_no}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Department</div>
+                <div class="info-value">${student.department}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Year</div>
+                <div class="info-value">${student.year}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Guardian</div>
+                <div class="info-value">${student.guardian_name}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Phone</div>
+                <div class="info-value">${student.phone}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Email</div>
+                <div class="info-value">${student.email}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">DOB</div>
+                <div class="info-value">${student.dob}</div>
+            </div>
+            ${student.linkedin ? `
+            <div class="info-item">
+                <div class="info-label">LinkedIn</div>
+                <div class="info-value"><a href="${student.linkedin}" target="_blank">View Profile</a></div>
+            </div>` : ''}
+            ${student.github ? `
+            <div class="info-item">
+                <div class="info-label">GitHub</div>
+                <div class="info-value"><a href="${student.github}" target="_blank">View Profile</a></div>
+            </div>` : ''}
+        </div>
+        
+        <div class="exams-grid">
+            <h3>📊 Exam Results</h3>
+            ${student.exam_details && student.exam_details.length > 0 ? 
+                student.exam_details.map(exam => `
+                <div class="info-item">
+                    <div class="info-label">${exam.subject}</div>
+                    <div class="info-value">${exam.marks} - ${exam.result} (${exam.type})</div>
+                </div>
+                `).join('') : 
+                '<p>No exam details added</p>'
+            }
+        </div>
+        
+        <div class="attendance-grid">
+            <h3>📅 Attendance</h3>
+            <div class="info-item">
+                <div class="info-label">Attendance</div>
+                <div class="info-value">${student.attendance_percentage}%</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Present Days</div>
+                <div class="info-value">${student.present_days}/${student.total_days}</div>
+            </div>
+        </div>
+        
+        <button onclick="loadForm()" style="background: #f44336; color: white; border: none; padding: 12px 25px; border-radius: 25px; cursor: pointer; margin-top: 20px;">
+            ➕ Add Another Student
+        </button>
+    `;
+}
+
+function loadForm() {
+    formSection.style.display = 'block';
+    displaySection.style.display = 'none';
+    studentForm.reset();
+    examDetails.innerHTML = `
+        <div class="exam-entry">
+            <input type="text" class="exam-subject" placeholder="Subject Name">
+            <input type="number" class="exam-marks" placeholder="Marks" min="0">
+            <select class="exam-result">
+                <option value="">Pass/Fail</option>
+                <option value="Pass">Pass</option>
+                <option value="Fail">Fail</option>
+            </select>
+            <select class="exam-type">
+                <option value="">Sem/CIA</option>
+                <option value="Semester">Semester</option>
+                <option value="CIA">CIA</option>
+            </select>
+            <button type="button" class="remove-exam" onclick="removeExam(this)">❌</button>
+        </div>
+    `;
+}
