@@ -1,10 +1,8 @@
-// NoticeBoard.js - FULL FIXED CODE (All buttons working)
-
+// NoticeBoard.js - FULLY FIXED & CONNECTED (uses description column)
 let currentUser = null;
 let notices = [];
 let currentFilter = 'all';
 
-// ==================== INIT ====================
 document.addEventListener('DOMContentLoaded', async () => {
     await checkAuth();
     await loadNotices();
@@ -13,12 +11,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupFormListeners();
 });
 
-// ==================== AUTH ====================
 async function checkAuth() {
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
         currentUser = session.user;
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', currentUser.id).single();
+        const { data: profile } = await supabase.from('login-information').select('*').eq('id', currentUser.id).single();
         currentUser.profile = profile || {};
     }
     updateUIAfterAuth();
@@ -32,9 +29,7 @@ function updateUIAfterAuth() {
 
     const userInfo = document.getElementById('userInfo');
     userInfo.style.display = currentUser ? 'inline' : 'none';
-    if (currentUser) {
-        userInfo.textContent = `Hi, ${currentUser.profile?.name || currentUser.email.split('@')[0]}!`;
-    }
+    if (currentUser) userInfo.textContent = `Hi, ${currentUser.profile?.name || currentUser.email.split('@')[0]}!`;
 }
 
 async function logout() {
@@ -61,12 +56,10 @@ function showAuth(type) {
         document.getElementById('authRegno').style.display = 'none';
         document.getElementById('authPhone').style.display = 'none';
     }
-    
     document.getElementById('authForm').dataset.type = type;
     modal.style.display = 'block';
 }
 
-// ==================== FORM LISTENERS ====================
 function setupFormListeners() {
     // Auth Form
     document.getElementById('authForm').onsubmit = async (e) => {
@@ -79,7 +72,7 @@ function setupFormListeners() {
             const { data, error } = await supabase.auth.signUp({ email, password });
             if (error) return showAlert(error.message, 'error');
 
-            await supabase.from('profiles').insert({
+            await supabase.from('login-information').insert({
                 id: data.user.id,
                 name: document.getElementById('authName').value,
                 regno: document.getElementById('authRegno').value,
@@ -104,7 +97,7 @@ function setupFormListeners() {
             type: document.getElementById('noticeType').value,
             date: document.getElementById('noticeDate').value,
             time: document.getElementById('noticeTime').value || null,
-            "desc": document.getElementById('noticeDesc').value,
+            description: document.getElementById('noticeDesc').value,   // ← Fixed
             registrations: [],
             created_by: currentUser?.id
         };
@@ -112,7 +105,7 @@ function setupFormListeners() {
         const { error } = await supabase.from('notices').insert(newNotice);
         if (error) return showAlert('Failed to add: ' + error.message, 'error');
 
-        showAlert('Notice added successfully! Visible to everyone.');
+        showAlert('Notice added successfully!');
         closeModal('addNoticeModal');
     };
 
@@ -132,7 +125,6 @@ function setupFormListeners() {
         };
 
         const updatedRegs = [...(notice.registrations || []), regData];
-
         const { error } = await supabase.from('notices').update({ registrations: updatedRegs }).eq('id', noticeId);
         if (error) return showAlert('Registration failed', 'error');
 
@@ -142,7 +134,6 @@ function setupFormListeners() {
     };
 }
 
-// ==================== NOTICES ====================
 async function loadNotices() {
     const { data, error } = await supabase.from('notices').select('*').order('date', { ascending: true });
     if (error) return showAlert('Failed to load notices', 'error');
@@ -171,7 +162,7 @@ function createNoticeCard(notice) {
                 ${notice.time || 'All Day'} | 
                 👥 ${registrations.length} registered
             </div>
-            <p class="notice-desc">${notice.desc || notice["desc"] || ''}</p>
+            <p class="notice-desc">${notice.description || ''}</p>
             <button class="action-btn ${isRegistered ? 'registered-btn' : 'register-btn'}" 
                     onclick="handleAction('${notice.id}', '${notice.type}')">
                 ${btnText}
@@ -197,7 +188,6 @@ function setupRealtime() {
         .subscribe();
 }
 
-// ==================== ACTION FUNCTIONS ====================
 window.handleAction = function(noticeId, type) {
     if (!currentUser && type !== 'notice') {
         showAuth('login');
@@ -214,7 +204,7 @@ function showRegisterModal(noticeId) {
     const notice = notices.find(n => n.id === noticeId);
     if (!notice) return;
     document.getElementById('noticeTitleReg').textContent = notice.title;
-    document.getElementById('noticeDetailsReg').textContent = `${notice.date} | ${notice.desc || notice["desc"]}`;
+    document.getElementById('noticeDetailsReg').textContent = `${notice.date} | ${notice.description || ''}`;
     document.getElementById('registerModal').dataset.noticeId = noticeId;
     document.getElementById('registerModal').style.display = 'block';
 }
@@ -224,7 +214,6 @@ function showAddNotice() {
     document.getElementById('addNoticeModal').style.display = 'block';
 }
 
-// ==================== UTILS ====================
 function closeModal(id) {
     document.getElementById(id).style.display = 'none';
 }
