@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         try {
             const { data: existing } = await supabase
-                .from('login-information')
+                .from('login_information')
                 .select('email,regno')
                 .or(`email.eq.${email},regno.eq.${regno}`);
 
@@ -70,7 +70,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const { data: authData, error } = await supabase.auth.signUp({ email, password });
             if (error) throw error;
 
-            await supabase.from('login-information').insert({
+            await supabase.from('login_information').insert({
                 id: authData.user.id, name, regno, phone, email
             });
 
@@ -97,7 +97,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             const { data: profile } = await supabase
-                .from('login-information')
+                .from('login_information')
                 .select('*')
                 .eq('id', data.user.id)
                 .single();
