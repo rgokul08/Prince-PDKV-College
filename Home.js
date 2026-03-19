@@ -1,67 +1,78 @@
-// ── Header Shrink on Scroll & Active Nav ─────────────────
-let lastScrollY = window.scrollY;
-const header = document.querySelector('.header-main');
-const navbar = document.querySelector('.navbar');
-const hamburger = document.getElementById('hamburger');
+// Enhanced Student Dashboard Script
 
+// ── HEADER SCROLL EFFECTS ────────────────────────────
+let isScrolled = false;
 window.addEventListener('scroll', () => {
-  const currentScrollY = window.scrollY;
+  const header = document.getElementById('header');
   
   // Header shrink effect
-  if (currentScrollY > 100) {
-    header.classList.add('shrink');
-  } else {
-    header.classList.remove('shrink');
+  if (window.scrollY > 100 && !isScrolled) {
+    header.classList.add('scrolled');
+    isScrolled = true;
+    document.querySelector('.college-title').style.opacity = '0.7';
+  } else if (window.scrollY <= 100 && isScrolled) {
+    header.classList.remove('scrolled');
+    isScrolled = false;
+    document.querySelector('.college-title').style.opacity = '1';
   }
   
-  // Active nav for Home page (default)
-  setTimeout(() => {
-    document.querySelector('.nav-link[data-page="home"]').classList.add('active');
-    document.querySelectorAll('.nav-link[data-page]:not([data-page="home"])').forEach(link => {
-      link.classList.remove('active');
-    });
-  }, 100);
+  // Navbar active state based on URL
+  updateActiveNav();
   
-  lastScrollY = currentScrollY;
+  // Trigger counters
+  animateCounters();
 });
 
-// ── Mobile Hamburger Menu ───────────────────────────────
-hamburger.addEventListener('click', () => {
-  navbar.classList.toggle('active');
-  hamburger.classList.toggle('active');
-});
-
-// ── Counter Animation ───────────────────────────────────
-function animateCounters() {
-  const counters = document.querySelectorAll('.counter');
+// ── DEFAULT HOME PAGE ACTIVE ─────────────────────────
+function updateActiveNav() {
+  const navLinks = document.querySelectorAll('.nav-link');
+  const currentPage = window.location.pathname.split('/').pop() || 'Home.html';
   
-  counters.forEach(counter => {
-    const target = parseFloat(counter.getAttribute('data-target'));
-    const increment = target / 100;
-    let current = 0;
+  navLinks.forEach(link => {
+    link.classList.remove('active');
+    const page = link.getAttribute('data-page');
     
-    if (counter.getBoundingClientRect().top < window.innerHeight && 
-        !counter.classList.contains('animated')) {
-      const timer = setInterval(() => {
-        current += increment;
-        if (current >= target) {
-          counter.textContent = target.toLocaleString();
-          if (target === 82.37) counter.textContent += '%';
-          if (target === 3.8 || target === 8) counter.textContent += ' LPA';
-          clearInterval(timer);
-        } else {
-          counter.textContent = Math.floor(current).toLocaleString();
-        }
-      }, 30);
-      counter.classList.add('animated');
+    if (currentPage.toLowerCase().includes(page)) {
+      link.classList.add('active');
     }
   });
 }
 
-window.addEventListener('scroll', animateCounters);
-animateCounters();
+// Initialize active nav on load
+document.addEventListener('DOMContentLoaded', updateActiveNav);
 
-// ── Smooth Scroll Animations ────────────────────────────
+// ── COUNTER ANIMATION ────────────────────────────────
+function animateCounters() {
+  const counters = document.querySelectorAll('.counter');
+  
+  counters.forEach(counter => {
+    if (counter.classList.contains('animated')) return;
+    
+    const rect = counter.getBoundingClientRect();
+    if (rect.top < window.innerHeight && rect.bottom > 0) {
+      const target = parseFloat(counter.getAttribute('data-target'));
+      const increment = target / 100;
+      let current = 0;
+      
+      const timer = setInterval(() => {
+        current += increment;
+        if (current >= target) {
+          counter.textContent = target.toLocaleString('en-IN', {
+            maximumFractionDigits: target % 1 === 0 ? 0 : 2
+          });
+          clearInterval(timer);
+        } else {
+          counter.textContent = Math.floor(current).toLocaleString('en-IN', {
+            maximumFractionDigits: 0
+          });
+        }
+        counter.classList.add('animated');
+      }, 30);
+    }
+  });
+}
+
+// ── SMOOTH SCROLL & ANIMATIONS ───────────────────────
 const observerOptions = {
   threshold: 0.1,
   rootMargin: '0px 0px -50px 0px'
@@ -77,29 +88,20 @@ const observer = new IntersectionObserver((entries) => {
 }, observerOptions);
 
 // Initialize animations
-document.querySelectorAll('.fact-card, .service-card, .gallery-item, .stat-box').forEach(el => {
-  el.style.opacity = '0';
-  el.style.transform = 'translateY(40px)';
-  el.style.transition = 'all 0.6s cubic-bezier(0.4,0,0.2,1)';
-  observer.observe(el);
-});
-
-// ── Parallax Hero Effect ───────────────────────────────
-window.addEventListener('scroll', () => {
-  const scrolled = window.pageYOffset;
-  const hero = document.querySelector('.hero-dashboard');
-  if (hero) {
-    hero.style.transform = `translateY(${Math.min(scrolled * 0.5, 50)}px)`;
-  }
-});
-
-// ── Service Cards Hover Scale ──────────────────────────
-document.querySelectorAll('.service-card').forEach(card => {
-  card.addEventListener('mouseenter', () => {
-    card.style.transform = 'translateY(-15px) scale(1.02)';
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.fact-card, .service-card, .gallery-item, .stat-box, .stat-item').forEach(el => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(40px)';
+    el.style.transition = 'all 0.8s cubic-bezier(0.4,0,0.2,1)';
+    observer.observe(el);
   });
   
-  card.addEventListener('mouseleave', () => {
-    card.style.transform = 'translateY(0) scale(1)';
+  // Hero parallax
+  window.addEventListener('scroll', () => {
+    const scrolled = window.pageYOffset;
+    const hero = document.querySelector('.hero-dashboard');
+    if (hero) {
+      hero.style.transform = `translateY(${Math.min(scrolled * 0.3, 30)}px)`;
+    }
   });
 });
