@@ -3,108 +3,205 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Prince DrK Vasudevan College</title>
+  <title>Prince Dr K Vasudevan College of Engineering & Technology</title>
   <link rel="stylesheet" href="Home.css" />
   <link rel="shortcut icon"
     href="https://yt3.googleusercontent.com/ytc/AIdro_k_qv60q5J-ADkI2QNCezEuT1zrK5KTSCIZMtIrhxphKU8=s900-c-k-c0x00ffffff-no-rj"
     type="image/x-icon">
+  <!-- Font Awesome for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-
   <!-- ===== HEADER ===== -->
   <header>
-    <h1 id="Prince">Prince Dr K Vasudevan College of Engineering and Technology</h1>
+    <h1 id="Prince">Prince Dr K Vasudevan College of Engineering & Technology</h1>
     <img
       src="https://yt3.googleusercontent.com/ytc/AIdro_k_qv60q5J-ADkI2QNCezEuT1zrK5KTSCIZMtIrhxphKU8=s900-c-k-c0x00ffffff-no-rj"
       alt="PDKV Logo" width="80" height="80" id="logoimg">
     <nav id="navbar">
-      <a href="Home.html"       class="a1">🏠 Home</a>
-      <a href="Courses.html"    class="a2">📚 Courses</a>
-      <a href="NoticeBoard.html"class="a3">📌 Notice Board</a>
-      <a href="Student.html"    class="a4">👨‍🎓 Students</a>
-      <a href="About.html"      class="a5">ℹ️ About Us</a>
+      <a href="#home" class="a1 active"><i class="fas fa-home"></i> Home</a>
+      <a href="#about" class="a2"><i class="fas fa-info-circle"></i> About</a>
+      <a href="#courses" class="a3"><i class="fas fa-graduation-cap"></i> Courses</a>
+      <a href="#achievements" class="a4"><i class="fas fa-trophy"></i> Achievements</a>
+      <a href="#facilities" class="a5"><i class="fas fa-building"></i> Facilities</a>
+      <a href="#contact" class="a6"><i class="fas fa-phone"></i> Contact</a>
     </nav>
   </header>
 
-  <!-- ===== INTRO CONTENT ===== -->
-  <div id="content">
-    <h2>Welcome to PDKV</h2>
-    <p>
-      Prince Dr K Vasudevan College of Engineering and Technology is a premier institution
-      dedicated to excellence in education, research, and innovation. Established with the vision
-      of nurturing future leaders in engineering and technology, our college offers a wide range of
-      undergraduate and postgraduate programs designed to equip students with the skills and
-      knowledge needed to thrive in today's dynamic world.
-    </p>
-  </div>
-
-  <!-- ===== AUTH CONTAINER ===== -->
-  <div id="authContainer">
-
-    <!-- LOGIN FORM -->
-    <div id="loginForm" class="auth-form">
-      <h3>🧑‍💻 LOGIN</h3>
-      <form id="loginFormElement" novalidate>
-        <label for="loginEmail">Email:</label>
-        <input type="email" id="loginEmail" placeholder="Enter your email" required />
-
-        <label for="loginPassword">Password:</label>
-        <input type="password" id="loginPassword" placeholder="Enter your password" required />
-
-        <button type="submit" id="loginSubmitBtn">🚀 Login</button>
-        <button type="button" id="showSignupBtn">🆕 Don't have an account? Sign Up</button>
-      </form>
-    </div>
-
-    <!-- SIGN UP FORM -->
-    <div id="signupForm" class="auth-form" style="display:none;">
-      <h3>👤 SIGN UP</h3>
-      <form id="signupFormElement" novalidate>
-        <label for="signupName">Full Name:</label>
-        <input type="text" id="signupName" placeholder="Enter your full name" required />
-
-        <label for="signupRegNo">Register No:</label>
-        <input type="text" id="signupRegNo" placeholder="e.g. 23CSE001" required />
-
-        <label for="signupPhone">Phone No:</label>
-        <input type="tel" id="signupPhone" placeholder="Enter 10-digit phone number" required />
-
-        <label for="signupEmail">Email:</label>
-        <input type="email" id="signupEmail" placeholder="Enter your email" required />
-
-        <label for="signupPassword">Password:</label>
-        <input type="password" id="signupPassword" placeholder="Min 6 characters" required />
-
-        <button type="submit" id="signupSubmitBtn">✅ Create Account</button>
-        <button type="button" id="showLoginBtn">🔐 Already have an account? Login</button>
-      </form>
-    </div>
-
-    <!-- WELCOME DASHBOARD (shown after login) -->
-    <div id="welcomeMessage" class="auth-form" style="display:none;">
-      <h3>🎉 Welcome, <span id="userName"></span>!</h3>
-      <div class="profile-card">
-        <p><strong>🎓 Register No:</strong> <span id="userRegNo"></span></p>
-        <p><strong>📧 Email:</strong>       <span id="userEmail"></span></p>
-        <p><strong>📞 Phone:</strong>       <span id="userPhone"></span></p>
+  <!-- ===== HERO SECTION ===== -->
+  <section id="home" class="hero-section">
+    <div class="hero-content">
+      <h2 class="hero-title animate-slide-up">Welcome to PDKV College</h2>
+      <p class="hero-subtitle animate-slide-up delay-1">Excellence in Engineering Education Since 2009</p>
+      <div class="hero-stats animate-slide-up delay-2">
+        <div class="stat-item"><span>15+</span> Years</div>
+        <div class="stat-item"><span>1200+</span> Students</div>
+        <div class="stat-item"><span>90%</span> Placement</div>
       </div>
-      <button id="logoutBtn">👋 Logout</button>
     </div>
+    <div class="hero-image">
+      <video autoplay muted loop playsinline class="animate-float">
+        <source src="https://assets.mixkit.co/videos/preview/mixkit-typing-on-a-computer-590-large.mp4" type="video/mp4">
+        Campus video
+      </video>
+    </div>
+  </section>
 
-  </div><!-- /authContainer -->
+  <!-- ===== ABOUT SECTION ===== -->
+  <section id="about" class="section">
+    <div class="container">
+      <h2 class="section-title animate-fade-in">About PDKV College</h2>
+      <div class="about-grid">
+        <div class="about-text animate-slide-right">
+          <p>Established in 2009 by Prince Educational Society, Prince Dr K Vasudevan College of Engineering and Technology is a premier engineering institution affiliated to Anna University and approved by AICTE.</p>
+          <p>Located in the serene Ponmar area of Chennai, our sprawling eco-friendly campus provides the perfect environment for academic excellence and holistic development.</p>
+          <div class="features">
+            <div class="feature"><i class="fas fa-award"></i> Anna University Affiliated</div>
+            <div class="feature"><i class="fas fa-check-circle"></i> AICTE Approved</div>
+            <div class="feature"><i class="fas fa-users"></i> Experienced Faculty</div>
+          </div>
+        </div>
+        <div class="about-image animate-slide-left">
+          <img src="https://images.unsplash.com/photo-1523050854058-8df90110c9f1?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80" alt="Campus">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== COURSES SECTION ===== -->
+  <section id="courses" class="section courses-section">
+    <div class="container">
+      <h2 class="section-title animate-fade-in">Academic Programs</h2>
+      <div class="courses-grid">
+        <div class="course-card animate-slide-up">
+          <i class="fas fa-laptop-code course-icon"></i>
+          <h3>B.E. Computer Science</h3>
+          <p>Advanced curriculum covering AI, ML, Cloud Computing, and Software Engineering</p>
+        </div>
+        <div class="course-card animate-slide-up delay-1">
+          <i class="fas fa-microchip course-icon"></i>
+          <h3>B.E. Electronics & Comm</h3>
+          <p>VLSI Design, Embedded Systems, IoT, and Wireless Communication</p>
+        </div>
+        <div class="course-card animate-slide-up delay-2">
+          <i class="fas fa-car course-icon"></i>
+          <h3>B.E. Mechanical Engg</h3>
+          <p>CAD/CAM, Robotics, Thermal Engineering, and Manufacturing Technology</p>
+        </div>
+        <div class="course-card animate-slide-up delay-3">
+          <i class="fas fa-cogs course-icon"></i>
+          <h3>B.E. Civil Engineering</h3>
+          <p>Structural Design, Construction Management, and Sustainable Engineering</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== ACHIEVEMENTS SECTION ===== -->
+  <section id="achievements" class="section achievements-section">
+    <div class="container">
+      <h2 class="section-title animate-fade-in">Our Achievements</h2>
+      <div class="achievements-grid">
+        <div class="achievement-card animate-slide-up">
+          <div class="achievement-icon success">
+            <i class="fas fa-chart-line"></i>
+          </div>
+          <h3>90%+ Placement Rate</h3>
+          <p>Consistent placement record with top companies like TCS, Infosys, Wipro, Cognizant</p>
+        </div>
+        <div class="achievement-card animate-slide-up delay-1">
+          <div class="achievement-icon gold">
+            <i class="fas fa-trophy"></i>
+          </div>
+          <h3>University Rank Holders</h3>
+          <p>Multiple Anna University rank holders across various engineering branches</p>
+        </div>
+        <div class="achievement-card animate-slide-up delay-2">
+          <div class="achievement-icon blue">
+            <i class="fas fa-rocket"></i>
+          </div>
+          <h3>Research Publications</h3>
+          <p>50+ research papers published in international journals annually</p>
+        </div>
+        <div class="achievement-card animate-slide-up delay-3">
+          <div class="achievement-icon green">
+            <i class="fas fa-users"></i>
+          </div>
+          <h3>Student Projects Funded</h3>
+          <p>10+ innovative projects funded by DST and other government agencies</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== FACILITIES SECTION ===== -->
+  <section id="facilities" class="section">
+    <div class="container">
+      <h2 class="section-title animate-fade-in">World-Class Facilities</h2>
+      <div class="facilities-grid">
+        <div class="facility-card animate-slide-up">
+          <i class="fas fa-server facility-icon"></i>
+          <h3>Advanced Labs</h3>
+          <p>50+ state-of-the-art laboratories equipped with latest technology</p>
+        </div>
+        <div class="facility-card animate-slide-up delay-1">
+          <i class="fas fa-wifi facility-icon"></i>
+          <h3>High-Speed Internet</h3>
+          <p>Campus-wide 1Gbps fiber optic internet connectivity</p>
+        </div>
+        <div class="facility-card animate-slide-up delay-2">
+          <i class="fas fa-dumbbell facility-icon"></i>
+          <h3>Sports Complex</h3>
+          <p>Indoor & outdoor sports facilities including gym & swimming pool</p>
+        </div>
+        <div class="facility-card animate-slide-up delay-3">
+          <i class="fas fa-utensils facility-icon"></i>
+          <h3>Modern Canteen</h3>
+          <p>Hygienic & nutritious food at affordable prices</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== CONTACT SECTION ===== -->
+  <section id="contact" class="section contact-section">
+    <div class="container">
+      <h2 class="section-title animate-fade-in">Get In Touch</h2>
+      <div class="contact-grid">
+        <div class="contact-info animate-slide-right">
+          <div class="contact-item">
+            <i class="fas fa-map-marker-alt"></i>
+            <p>Medavakkam - Mambakkam Main Road, Ponmar, Chennai - 600 077</p>
+          </div>
+          <div class="contact-item">
+            <i class="fas fa-phone"></i>
+            <p>+91 44 - 2242 0129</p>
+          </div>
+          <div class="contact-item">
+            <i class="fas fa-envelope"></i>
+            <p>princedrkvasudevan@gmail.com</p>
+          </div>
+          <div class="contact-item">
+            <i class="fas fa-globe"></i>
+            <p>www.princedrkvasudevan.com</p>
+          </div>
+        </div>
+        <div class="contact-map animate-slide-left">
+          <iframe 
+            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3887.489678140626!2d80.17439961476823!3d12.883779990778585!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3a525e7f1f1f1f1f%3A0x1f1f1f1f1f1f1f1f!2sPrince%20Dr%20K%20Vasudevan%20College%20of%20Engineering%20and%20Technology!5e0!3m2!1sen!2sin!4v1630000000000" 
+            width="100%" height="300" style="border:0; border-radius: 15px;" allowfullscreen="" loading="lazy">
+          </iframe>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <!-- ===== FOOTER ===== -->
   <footer>
-    <p>&copy; 2026 Prince DrK Vasudevan College of Engineering and Technology</p>
+    <p><i class="fas fa-copyright"></i> 2026 Prince Dr K Vasudevan College of Engineering & Technology. All Rights Reserved.</p>
+    <p>Medavakkam - Mambakkam Main Road, Ponmar, Chennai - 600 077 | Phone: 044-22420129</p>
   </footer>
 
-  <!--
-    ✅ CRITICAL FIX: type="module" is REQUIRED because supabaseClient.js
-       uses ES `import` syntax. Without this, Supabase never loads and
-       everything breaks silently.
-  -->
-  <script type="module" src="supabaseClient.js"></script>
-  <script type="module" src="Home.js"></script>
-
+  <script src="Home.js"></script>
 </body>
 </html>
