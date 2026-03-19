@@ -236,7 +236,7 @@ body {
 /* Gallery */
 .gallery-section {
   padding: 100px 0;
-  background: #f8f9fa;
+  background: #f8f9faea;
 }
 
 .gallery-grid {
@@ -313,7 +313,7 @@ body {
 }
 
 .recruiters-logos img {
-  height: 55px;
+  height: 65px;
   filter: brightness(0) invert(1);
   transition: all 0.4s ease;
   padding: 8px;
