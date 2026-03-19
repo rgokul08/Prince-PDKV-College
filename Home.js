@@ -1,53 +1,58 @@
-// Enhanced Student Dashboard Script
+// Enhanced Student Dashboard - Complete Functionality
 
-// ── HEADER SCROLL EFFECTS ────────────────────────────
+// ── HEADER SCROLL EFFECTS & NAVBAR ───────────────────
 let isScrolled = false;
+
 window.addEventListener('scroll', () => {
   const header = document.getElementById('header');
   
-  // Header shrink effect
-  if (window.scrollY > 100 && !isScrolled) {
-    header.classList.add('scrolled');
-    isScrolled = true;
-    document.querySelector('.college-title').style.opacity = '0.7';
-  } else if (window.scrollY <= 100 && isScrolled) {
-    header.classList.remove('scrolled');
-    isScrolled = false;
-    document.querySelector('.college-title').style.opacity = '1';
+  // Smart header shrink (scroll > 100px)
+  if (window.scrollY > 100) {
+    if (!isScrolled) {
+      header.classList.add('scrolled');
+      isScrolled = true;
+    }
+  } else {
+    if (isScrolled) {
+      header.classList.remove('scrolled');
+      isScrolled = false;
+    }
   }
   
-  // Navbar active state based on URL
+  // Update active navigation
   updateActiveNav();
   
-  // Trigger counters
+  // Animate counters on scroll
   animateCounters();
 });
 
-// ── DEFAULT HOME PAGE ACTIVE ─────────────────────────
+// ── INTELLIGENT NAVBAR ACTIVE STATE ──────────────────
 function updateActiveNav() {
   const navLinks = document.querySelectorAll('.nav-link');
   const currentPage = window.location.pathname.split('/').pop() || 'Home.html';
   
   navLinks.forEach(link => {
     link.classList.remove('active');
-    const page = link.getAttribute('data-page');
+    const targetPage = link.getAttribute('data-page');
     
-    if (currentPage.toLowerCase().includes(page)) {
+    // Match current page to nav link
+    if (currentPage.toLowerCase().includes(targetPage) || 
+        (currentPage === 'Home.html' && targetPage === 'home')) {
       link.classList.add('active');
     }
   });
 }
 
-// Initialize active nav on load
-document.addEventListener('DOMContentLoaded', updateActiveNav);
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', () => {
+  updateActiveNav();
+});
 
-// ── COUNTER ANIMATION ────────────────────────────────
+// ── ADVANCED COUNTER ANIMATION ───────────────────────
 function animateCounters() {
-  const counters = document.querySelectorAll('.counter');
+  const counters = document.querySelectorAll('.counter:not(.animated)');
   
   counters.forEach(counter => {
-    if (counter.classList.contains('animated')) return;
-    
     const rect = counter.getBoundingClientRect();
     if (rect.top < window.innerHeight && rect.bottom > 0) {
       const target = parseFloat(counter.getAttribute('data-target'));
@@ -59,7 +64,7 @@ function animateCounters() {
         if (current >= target) {
           counter.textContent = target.toLocaleString('en-IN', {
             maximumFractionDigits: target % 1 === 0 ? 0 : 2
-          });
+          }) + (target === 82.37 ? '%' : '');
           clearInterval(timer);
         } else {
           counter.textContent = Math.floor(current).toLocaleString('en-IN', {
@@ -72,7 +77,7 @@ function animateCounters() {
   });
 }
 
-// ── SMOOTH SCROLL & ANIMATIONS ───────────────────────
+// ── SMOOTH SCROLL OBSERVER ANIMATIONS ────────────────
 const observerOptions = {
   threshold: 0.1,
   rootMargin: '0px 0px -50px 0px'
@@ -83,11 +88,12 @@ const observer = new IntersectionObserver((entries) => {
     if (entry.isIntersecting) {
       entry.target.style.opacity = '1';
       entry.target.style.transform = 'translateY(0)';
+      observer.unobserve(entry.target);
     }
   });
 }, observerOptions);
 
-// Initialize animations
+// Initialize all scroll animations
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.fact-card, .service-card, .gallery-item, .stat-box, .stat-item').forEach(el => {
     el.style.opacity = '0';
@@ -95,13 +101,24 @@ document.addEventListener('DOMContentLoaded', () => {
     el.style.transition = 'all 0.8s cubic-bezier(0.4,0,0.2,1)';
     observer.observe(el);
   });
-  
-  // Hero parallax
-  window.addEventListener('scroll', () => {
-    const scrolled = window.pageYOffset;
-    const hero = document.querySelector('.hero-dashboard');
-    if (hero) {
-      hero.style.transform = `translateY(${Math.min(scrolled * 0.3, 30)}px)`;
-    }
+});
+
+// ── HERO PARALLAX EFFECT ────────────────────────────
+window.addEventListener('scroll', () => {
+  const scrolled = window.pageYOffset;
+  const hero = document.querySelector('.hero-dashboard');
+  if (hero) {
+    hero.style.transform = `translateY(${Math.min(scrolled * 0.3, 30)}px)`;
+  }
+});
+
+// ── GALLERY MOUSE EFFECTS ───────────────────────────
+document.querySelectorAll('.gallery-item').forEach(item => {
+  item.addEventListener('mousemove', (e) => {
+    const rect = item.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    item.style.setProperty('--mouse-x', `${x}px`);
+    item.style.setProperty('--mouse-y', `${y}px`);
   });
 });
