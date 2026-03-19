@@ -142,7 +142,7 @@ body {
 .hero-title {
   font-size: clamp(2.5rem, 6vw, 4rem);
   font-weight: 700;
-  margin-bottom: 20px;
+  margin-bottom: 50px;
   margin-top: 20px;
   text-shadow: 3px 3px 10px rgba(0,0,0,0.5);
   background: linear-gradient(45deg, white, #f0f8ff);
