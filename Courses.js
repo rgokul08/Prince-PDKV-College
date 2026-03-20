@@ -1,4 +1,4 @@
-import { initStickyHeader, initHamburger, initScrollAnimations, openModal, closeModal, initModalCloseHandlers, showToast } from './shared.js'
+import { initStickyHeader, initHamburger, initScrollAnimations, openModal, closeModal, initModalCloseHandlers, showToast, initAuth, openAuthModal, logoutUser } from './shared.js'
 
 const courseData = {
   'btech-cse': {
@@ -75,11 +75,19 @@ const courseData = {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   initStickyHeader()
   initHamburger()
   initScrollAnimations()
   initModalCloseHandlers()
+
+  // Init global auth
+  await initAuth()
+
+  document.getElementById('headerLoginBtn')?.addEventListener('click', () => openAuthModal('login'))
+  document.querySelectorAll('.global-header-logout').forEach(btn => {
+    btn.addEventListener('click', async () => { await logoutUser() })
+  })
 
   // Course card click -> open modal
   document.querySelectorAll('.course-card').forEach(card => {

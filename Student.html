@@ -26,6 +26,14 @@
         <a href="NoticeBoard.html" class="nav-link"><i class="fas fa-bell"></i><span>Notice Board</span></a>
         <a href="Student.html" class="nav-link active"><i class="fas fa-user-graduate"></i><span>Students</span></a>
         <a href="About.html" class="nav-link"><i class="fas fa-info-circle"></i><span>About Us</span></a>
+        <!-- Auth -->
+        <button class="nav-auth-btn global-header-auth" id="headerLoginBtn" style="display:none;">
+          <i class="fas fa-sign-in-alt"></i> Sign In
+        </button>
+        <span class="nav-user-chip global-header-user" style="display:none;"></span>
+        <button class="nav-auth-btn global-header-logout" style="display:none;background:linear-gradient(135deg,#f44336,#c62828);">
+          <i class="fas fa-sign-out-alt"></i> Logout
+        </button>
       </nav>
     </div>
   </header>
@@ -35,7 +43,7 @@
     <div class="page-hero-overlay"></div>
     <div class="page-hero-content">
       <h1 class="animate-fade-up"><i class="fas fa-user-graduate"></i> Student Portal</h1>
-      <p class="animate-fade-up">Submit and view student academic information</p>
+      <p class="animate-fade-up">Sign in to view your academic profile and records</p>
     </div>
   </section>
 
@@ -43,130 +51,47 @@
   <section class="section st-section">
     <div class="container">
 
-      <!-- FORM SECTION -->
-      <div id="formSection">
-        <div class="st-form-card animate-fade-up">
-          <div class="st-form-header">
-            <h2><i class="fas fa-clipboard-list"></i> Student Information Form</h2>
-            <p>Fill in the details below to register student information</p>
-          </div>
-
-          <form id="studentForm" novalidate>
-            <!-- Personal Info -->
-            <div class="form-section-block">
-              <h3 class="form-section-title"><i class="fas fa-user"></i> Personal Information</h3>
-              <div class="form-img-upload" id="imgUploadArea">
-                <div class="img-preview" id="imgPreview">
-                  <i class="fas fa-user-circle"></i>
-                </div>
-                <label class="img-upload-label" for="studentImage">
-                  <i class="fas fa-camera"></i> Upload Photo
-                </label>
-                <input type="file" id="studentImage" accept="image/*" style="display:none;" />
-              </div>
-              <div class="form-grid">
-                <div class="form-group">
-                  <label class="form-label">Full Name *</label>
-                  <input type="text" id="studentName" class="form-input" placeholder="Enter full name" required />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Guardian Name *</label>
-                  <input type="text" id="guardianName" class="form-input" placeholder="Father / Mother / Guardian" required />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Register Number *</label>
-                  <input type="text" id="registerNo" class="form-input" placeholder="e.g. 22CS0001" required />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Department *</label>
-                  <input type="text" id="department" class="form-input" placeholder="e.g. CSE" required />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Year (1-4) *</label>
-                  <input type="number" id="year" class="form-input" placeholder="Year" min="1" max="4" required />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Phone Number *</label>
-                  <input type="tel" id="phone" class="form-input" placeholder="+91 99999 99999" required />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Email ID *</label>
-                  <input type="email" id="email" class="form-input" placeholder="student@email.com" required />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Date of Birth *</label>
-                  <input type="date" id="dob" class="form-input" required />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">LinkedIn (Optional)</label>
-                  <input type="url" id="linkedin" class="form-input" placeholder="linkedin.com/in/..." />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">GitHub (Optional)</label>
-                  <input type="url" id="github" class="form-input" placeholder="github.com/..." />
-                </div>
-              </div>
-            </div>
-
-            <!-- Exam Details -->
-            <div class="form-section-block">
-              <h3 class="form-section-title"><i class="fas fa-graduation-cap"></i> Exam Details</h3>
-              <div id="examEntries">
-                <div class="exam-entry">
-                  <input type="text" class="form-input exam-subject" placeholder="Subject Name" />
-                  <input type="number" class="form-input exam-marks" placeholder="Marks (0-100)" min="0" max="100" />
-                  <select class="form-select exam-result">
-                    <option value="">Pass/Fail</option>
-                    <option value="Pass">✅ Pass</option>
-                    <option value="Fail">❌ Fail</option>
-                  </select>
-                  <select class="form-select exam-type">
-                    <option value="">Sem/CIA</option>
-                    <option value="Semester">Semester</option>
-                    <option value="CIA">CIA</option>
-                  </select>
-                  <button type="button" class="remove-exam-btn" onclick="removeExam(this)"><i class="fas fa-times"></i></button>
-                </div>
-              </div>
-              <button type="button" id="addExamBtn" class="btn btn-secondary" style="margin-top:12px;">
-                <i class="fas fa-plus"></i> Add Exam
-              </button>
-            </div>
-
-            <!-- Attendance -->
-            <div class="form-section-block">
-              <h3 class="form-section-title"><i class="fas fa-calendar-check"></i> Attendance</h3>
-              <div class="form-grid">
-                <div class="form-group">
-                  <label class="form-label">Total College Days *</label>
-                  <input type="number" id="totalDays" class="form-input" placeholder="e.g. 180" min="0" required />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Days Present *</label>
-                  <input type="number" id="presentDays" class="form-input" placeholder="e.g. 160" min="0" required />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Days Absent</label>
-                  <input type="number" id="absentDays" class="form-input" readonly placeholder="Auto-calculated" />
-                </div>
-              </div>
-              <div id="attendanceDisplay" class="attendance-display" style="display:none;"></div>
-            </div>
-
-            <button type="submit" id="submitBtn" class="btn btn-primary submit-btn">
-              <i class="fas fa-save"></i> Submit Student Data
+      <!-- NOT LOGGED IN STATE -->
+      <div id="notLoggedInSection" style="display:none;">
+        <div class="st-login-prompt animate-fade-up">
+          <div class="st-login-icon"><i class="fas fa-user-lock"></i></div>
+          <h2>Sign In to Access Your Profile</h2>
+          <p>Please sign in with your registered email and register number to view your academic details, exam results, and attendance records.</p>
+          <div class="st-login-actions">
+            <button class="btn btn-primary" id="promptLoginBtn">
+              <i class="fas fa-sign-in-alt"></i> Sign In
             </button>
-          </form>
+            <button class="btn btn-secondary" id="promptSignupBtn">
+              <i class="fas fa-user-plus"></i> Create Account
+            </button>
+          </div>
+          <p class="st-login-note">
+            <i class="fas fa-info-circle"></i>
+            Your academic data is linked to your register number. Once you sign in, your records stored by the institution will appear here automatically.
+          </p>
+        </div>
+      </div>
+
+      <!-- LOADING STATE -->
+      <div id="loadingSection" style="display:none;">
+        <div class="st-loading animate-fade-up">
+          <div class="spinner"></div>
+          <p>Loading your academic profile…</p>
+        </div>
+      </div>
+
+      <!-- NO DATA FOUND STATE -->
+      <div id="noDataSection" style="display:none;">
+        <div class="st-no-data animate-fade-up">
+          <div class="st-no-data-icon"><i class="fas fa-folder-open"></i></div>
+          <h2>No Records Found</h2>
+          <p id="noDataMsg">Your academic records have not been entered yet. Please contact the college administration.</p>
+          <div class="st-no-data-info" id="noDataUserInfo"></div>
         </div>
       </div>
 
       <!-- PROFILE SECTION -->
       <div id="profileSection" style="display:none;">
-        <div class="profile-actions animate-fade-up">
-          <button id="backToFormBtn" class="btn btn-outline">
-            <i class="fas fa-plus"></i> Add New Student
-          </button>
-        </div>
         <div id="profileContent" class="animate-fade-up"></div>
       </div>
 

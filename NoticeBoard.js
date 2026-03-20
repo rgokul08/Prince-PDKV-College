@@ -1,8 +1,6 @@
 import { supabase } from './supabaseClient.js'
-import { initStickyHeader, initHamburger, initScrollAnimations, openModal, closeModal, initModalCloseHandlers, showToast } from './shared.js'
+import { initStickyHeader, initHamburger, initScrollAnimations, openModal, closeModal, initModalCloseHandlers, showToast, initAuth, openAuthModal, logoutUser, getCurrentUser, getUserProfile, onAuthChange } from './shared.js'
 
-let currentUser   = null
-let userProfile   = null
 let notices       = []
 let currentFilter = 'all'
 
@@ -18,76 +16,38 @@ document.addEventListener('DOMContentLoaded', async () => {
   initHamburger()
   initScrollAnimations()
   initModalCloseHandlers()
-  setupAuthButtons()
-  setupFormListeners()
   setupFilters()
+  setupRegisterForm()
 
-  await checkAuth()
+  // Init global auth
+  await initAuth()
+
+  // Wire up header auth buttons
+  document.getElementById('headerLoginBtn')?.addEventListener('click', () => openAuthModal('login'))
+  document.querySelectorAll('.global-header-logout').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await logoutUser()
+    })
+  })
+
+  // Re-render notices when auth changes
+  onAuthChange((user, profile) => {
+    updateHeroGreeting(user, profile)
+    renderNotices()
+  })
+
   await loadNotices()
   setupRealtime()
 })
 
-// ── AUTH ──────────────────────────────────────────────────
-async function checkAuth() {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (session) {
-    currentUser = session.user
-    const { data } = await supabase
-      .from('login_information')
-      .select('*')
-      .eq('id', currentUser.id)
-      .maybeSingle()
-    userProfile = data || {}
-  }
-  updateAuthUI()
-}
-
-function updateAuthUI() {
-  const loggedIn = !!currentUser
-  document.getElementById('loginBtn').style.display    = loggedIn ? 'none' : 'inline-flex'
-  document.getElementById('signupBtn').style.display   = loggedIn ? 'none' : 'inline-flex'
-  document.getElementById('logoutBtn').style.display   = loggedIn ? 'inline-flex' : 'none'
-  document.getElementById('addNoticeBtn').style.display= loggedIn ? 'inline-flex' : 'none'
+function updateHeroGreeting(user, profile) {
   const greeting = document.getElementById('userGreeting')
-  greeting.style.display = loggedIn ? 'inline-flex' : 'none'
-  if (loggedIn) {
-    greeting.textContent = `👋 Hi, ${userProfile?.name || currentUser.email.split('@')[0]}!`
+  if (user && greeting) {
+    greeting.style.display = 'inline-flex'
+    greeting.textContent = `👋 Hi, ${profile?.name || user.email.split('@')[0]}!`
+  } else if (greeting) {
+    greeting.style.display = 'none'
   }
-}
-
-function setupAuthButtons() {
-  document.getElementById('loginBtn').addEventListener('click',  () => showAuth('login'))
-  document.getElementById('signupBtn').addEventListener('click', () => showAuth('signup'))
-  document.getElementById('addNoticeBtn').addEventListener('click', showAddNotice)
-  document.getElementById('logoutBtn').addEventListener('click', async () => {
-    await supabase.auth.signOut()
-    currentUser = null; userProfile = null
-    updateAuthUI()
-    renderNotices()
-    showToast('Logged out successfully!', 'info')
-  })
-  document.getElementById('toggleAuth').addEventListener('click', () => {
-    const form = document.getElementById('authForm')
-    showAuth(form.dataset.type === 'login' ? 'signup' : 'login')
-  })
-}
-
-function showAuth(type) {
-  document.getElementById('authModalTitle').textContent = type === 'signup' ? 'Create Account' : 'Sign In'
-  document.getElementById('authSubmitBtn').textContent  = type === 'signup' ? 'Create Account' : 'Sign In'
-  document.getElementById('signupFields').style.display = type === 'signup' ? 'block' : 'none'
-  document.getElementById('authForm').dataset.type = type
-  const toggle = document.getElementById('toggleAuth')
-  toggle.innerHTML = type === 'signup'
-    ? 'Already have an account? <span>Sign In</span>'
-    : "Don't have an account? <span>Sign Up</span>"
-  openModal('authModal')
-}
-
-function showAddNotice() {
-  if (!currentUser) return showAuth('login')
-  document.getElementById('addNoticeForm').reset()
-  openModal('addNoticeModal')
 }
 
 // ── LOAD & RENDER ─────────────────────────────────────────
@@ -103,6 +63,7 @@ async function loadNotices() {
 }
 
 function renderNotices() {
+  const currentUser = getCurrentUser()
   const container = document.getElementById('noticesList')
   const filtered = currentFilter === 'all' ? notices : notices.filter(n => n.type === currentFilter)
 
@@ -115,10 +76,10 @@ function renderNotices() {
     return
   }
 
-  container.innerHTML = filtered.map(buildCard).join('')
+  container.innerHTML = filtered.map(n => buildCard(n, currentUser)).join('')
 }
 
-function buildCard(n) {
+function buildCard(n, currentUser) {
   const cfg   = TYPE_CONFIG[n.type] || TYPE_CONFIG.notice
   const regs  = Array.isArray(n.registrations) ? n.registrations : []
   const isReg = currentUser && regs.some(r => r.email === currentUser.email)
@@ -137,7 +98,7 @@ function buildCard(n) {
     btnHtml = `<button class="notice-action-btn nb-reg-btn" onclick="handleAction('${n.id}','${n.type}')">
                  <i class="fas fa-clipboard-check"></i> Register Now</button>`
   } else {
-    btnHtml = `<button class="notice-action-btn nb-signin-btn" onclick="showAuth('login')">
+    btnHtml = `<button class="notice-action-btn nb-signin-btn" onclick="openGlobalAuth()">
                  <i class="fas fa-sign-in-alt"></i> Sign In to Register</button>`
   }
 
@@ -197,9 +158,13 @@ window.handleAction = function(id, type) {
   openRegisterModal(id)
 }
 
-window.showAuth = showAuth
+window.openGlobalAuth = function() {
+  openAuthModal('login')
+}
 
 function openRegisterModal(noticeId) {
+  const currentUser = getCurrentUser()
+  const userProfile = getUserProfile()
   const notice = notices.find(n => n.id === noticeId)
   if (!notice) return
 
@@ -230,71 +195,11 @@ function openRegisterModal(noticeId) {
   openModal('registerModal')
 }
 
-// ── FORMS ─────────────────────────────────────────────────
-function setupFormListeners() {
-
-  // Auth form
-  document.getElementById('authForm').addEventListener('submit', async (e) => {
-    e.preventDefault()
-    const type     = e.target.dataset.type
-    const email    = document.getElementById('authEmail').value.trim()
-    const password = document.getElementById('authPassword').value
-    const btn      = document.getElementById('authSubmitBtn')
-
-    btn.disabled = true
-    btn.textContent = type === 'signup' ? 'Creating Account…' : 'Signing In…'
-
-    if (type === 'signup') {
-      const name  = document.getElementById('authName').value.trim()
-      const regno = document.getElementById('authRegno').value.trim()
-      const phone = document.getElementById('authPhone').value.trim()
-      const year  = document.getElementById('authYear').value.trim()
-      const dept  = document.getElementById('authDept').value.trim()
-
-      const { data, error } = await supabase.auth.signUp({ email, password })
-      if (error) { showToast(error.message, 'error'); btn.disabled = false; btn.textContent = 'Create Account'; return }
-
-      await supabase.from('login_information').insert({ id: data.user.id, name, regno, phone, year, dept })
-      showToast('Account created! Please check your email to confirm.', 'success')
-    } else {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) { showToast(error.message, 'error'); btn.disabled = false; btn.textContent = 'Sign In'; return }
-      showToast('Welcome back! Login successful.', 'success')
-    }
-
-    closeModal('authModal')
-    await checkAuth()
-    renderNotices()
-    btn.disabled = false
-  })
-
-  // Add notice form
-  document.getElementById('addNoticeForm').addEventListener('submit', async (e) => {
-    e.preventDefault()
-    if (!currentUser) return showAuth('login')
-
-    const newNotice = {
-      id:            'notice_' + Date.now(),
-      title:         document.getElementById('noticeTitle').value.trim(),
-      type:          document.getElementById('noticeType').value,
-      date:          document.getElementById('noticeDate').value,
-      time:          document.getElementById('noticeTime').value || null,
-      description:   document.getElementById('noticeDesc').value.trim(),
-      registrations: [],
-      created_by:    currentUser.id
-    }
-
-    const { error } = await supabase.from('notices_informations').insert(newNotice)
-    if (error) { showToast('Failed to publish: ' + error.message, 'error'); return }
-
-    showToast('Notice published successfully!', 'success')
-    closeModal('addNoticeModal')
-    await loadNotices()
-  })
-
-  // Register form
+// ── REGISTER FORM ─────────────────────────────────────────
+function setupRegisterForm() {
   document.getElementById('registerForm').addEventListener('submit', async (e) => {
     e.preventDefault()
+    const currentUser = getCurrentUser()
     const noticeId = document.getElementById('registerModal').dataset.noticeId
     const notice   = notices.find(n => n.id === noticeId)
     if (!notice) return

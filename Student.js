@@ -1,256 +1,169 @@
 import { supabase } from './supabaseClient.js'
-import { initStickyHeader, initHamburger, initScrollAnimations, showToast } from './shared.js'
+import { initStickyHeader, initHamburger, initScrollAnimations, showToast, initAuth, openAuthModal, logoutUser, getCurrentUser, getUserProfile, onAuthChange } from './shared.js'
 
-document.addEventListener('DOMContentLoaded', () => {
-  if (window.history.replaceState) window.history.replaceState(null, null, window.location.href)
-
+document.addEventListener('DOMContentLoaded', async () => {
   initStickyHeader()
   initHamburger()
   initScrollAnimations()
 
-  const formSection    = document.getElementById('formSection')
-  const profileSection = document.getElementById('profileSection')
-  const studentForm    = document.getElementById('studentForm')
-  const backBtn        = document.getElementById('backToFormBtn')
-  const examEntries    = document.getElementById('examEntries')
-  const addExamBtn     = document.getElementById('addExamBtn')
-  const totalDaysInput = document.getElementById('totalDays')
-  const presentInput   = document.getElementById('presentDays')
-  const absentInput    = document.getElementById('absentDays')
-  const attDisplay     = document.getElementById('attendanceDisplay')
-  const imgInput       = document.getElementById('studentImage')
-  const imgPreview     = document.getElementById('imgPreview')
+  // Init global auth
+  await initAuth()
 
-  // ── Restore session ──────────────────────────────────────
-  const saved = sessionStorage.getItem('pdkv_student')
-  if (saved) {
-    showProfile(JSON.parse(saved))
+  // Wire up header auth buttons
+  document.getElementById('headerLoginBtn')?.addEventListener('click', () => openAuthModal('login'))
+  document.querySelectorAll('.global-header-logout').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await logoutUser()
+    })
+  })
+
+  // Login prompt buttons
+  document.getElementById('promptLoginBtn')?.addEventListener('click', () => openAuthModal('login'))
+  document.getElementById('promptSignupBtn')?.addEventListener('click', () => openAuthModal('signup'))
+
+  // React to auth changes
+  onAuthChange(async (user, profile) => {
+    await handleAuthState(user, profile)
+  })
+
+  // Initial state
+  const user = getCurrentUser()
+  const profile = getUserProfile()
+  await handleAuthState(user, profile)
+})
+
+async function handleAuthState(user, profile) {
+  if (!user) {
+    showSection('notLoggedIn')
     return
   }
 
-  // ── Image preview ────────────────────────────────────────
-  imgInput.addEventListener('change', () => {
-    const file = imgInput.files[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      imgPreview.innerHTML = `<img src="${e.target.result}" alt="Preview" />`
-    }
-    reader.readAsDataURL(file)
-  })
-
-  // ── Attendance calc ──────────────────────────────────────
-  function calcAttendance() {
-    const total   = parseInt(totalDaysInput.value) || 0
-    const present = parseInt(presentInput.value)   || 0
-    if (total > 0 && present <= total) {
-      const absent = total - present
-      const pct    = ((present / total) * 100).toFixed(2)
-      absentInput.value = absent
-      attDisplay.style.display = 'block'
-      const color = parseFloat(pct) >= 75 ? 'var(--accent)' : 'var(--danger)'
-      attDisplay.innerHTML = `<i class="fas fa-chart-bar" style="color:${color};margin-right:8px;"></i>Attendance: <span style="color:${color}">${pct}%</span> &nbsp;|&nbsp; Present: ${present} &nbsp;|&nbsp; Absent: ${absent}`
-    } else {
-      attDisplay.style.display = 'none'
-    }
+  // User is logged in — get their register number from login_information
+  const regno = profile?.regno
+  if (!regno) {
+    showSection('noData')
+    document.getElementById('noDataMsg').textContent =
+      'Your account does not have a register number associated. Please contact the college administration.'
+    document.getElementById('noDataUserInfo').innerHTML =
+      `<p><i class="fas fa-envelope"></i> Logged in as: <strong>${user.email}</strong></p>`
+    return
   }
 
-  totalDaysInput.addEventListener('input', calcAttendance)
-  presentInput.addEventListener('input', calcAttendance)
+  showSection('loading')
 
-  // ── Add / Remove Exam ─────────────────────────────────────
-  addExamBtn.addEventListener('click', () => {
-    const entry = document.createElement('div')
-    entry.className = 'exam-entry'
-    entry.innerHTML = `
-      <input type="text"   class="form-input exam-subject" placeholder="Subject Name" />
-      <input type="number" class="form-input exam-marks"   placeholder="Marks (0-100)" min="0" max="100" />
-      <select class="form-select exam-result">
-        <option value="">Pass/Fail</option>
-        <option value="Pass">✅ Pass</option>
-        <option value="Fail">❌ Fail</option>
-      </select>
-      <select class="form-select exam-type">
-        <option value="">Sem/CIA</option>
-        <option value="Semester">Semester</option>
-        <option value="CIA">CIA</option>
-      </select>
-      <button type="button" class="remove-exam-btn" onclick="removeExam(this)"><i class="fas fa-times"></i></button>
+  // Fetch student data by register number
+  const { data: student, error } = await supabase
+    .from('student_information')
+    .select('*')
+    .ilike('register_no', regno)
+    .maybeSingle()
+
+  if (error) {
+    showToast('Error fetching records: ' + error.message, 'error')
+    showSection('noData')
+    return
+  }
+
+  if (!student) {
+    showSection('noData')
+    document.getElementById('noDataMsg').textContent =
+      `No academic records found for register number "${regno}". Your data may not have been entered yet.`
+    document.getElementById('noDataUserInfo').innerHTML = `
+      <p><i class="fas fa-id-card"></i> Register No: <strong>${regno}</strong></p>
+      <p><i class="fas fa-user"></i> Name: <strong>${profile?.name || '—'}</strong></p>
+      <p><i class="fas fa-envelope"></i> Email: <strong>${user.email}</strong></p>
     `
-    examEntries.appendChild(entry)
-  })
-
-  window.removeExam = (btn) => {
-    if (examEntries.children.length > 1) btn.closest('.exam-entry').remove()
+    return
   }
 
-  // ── Form submit ───────────────────────────────────────────
-  studentForm.addEventListener('submit', async (e) => {
-    e.preventDefault()
-    const submitBtn = document.getElementById('submitBtn')
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…'
-    submitBtn.disabled = true
+  showSection('profile')
+  renderProfile(student, profile)
+}
 
-    try {
-      const dob = new Date(document.getElementById('dob').value).toLocaleDateString('en-GB')
-      const formData = {
-        name:            document.getElementById('studentName').value.trim(),
-        guardian_name:   document.getElementById('guardianName').value.trim(),
-        register_no:     document.getElementById('registerNo').value.trim(),
-        department:      document.getElementById('department').value.trim(),
-        year:            parseInt(document.getElementById('year').value),
-        phone:           document.getElementById('phone').value.trim(),
-        email:           document.getElementById('email').value.trim(),
-        linkedin:        document.getElementById('linkedin').value.trim() || null,
-        github:          document.getElementById('github').value.trim() || null,
-        dob,
-        total_days:      parseInt(totalDaysInput.value) || 0,
-        present_days:    parseInt(presentInput.value) || 0,
-        absent_days:     parseInt(absentInput.value) || 0,
-        attendance_percentage: parseFloat(attDisplay.textContent?.match(/[\d.]+/)?.[0] || 0)
-      }
+function showSection(which) {
+  document.getElementById('notLoggedInSection').style.display = which === 'notLoggedIn' ? 'block' : 'none'
+  document.getElementById('loadingSection').style.display     = which === 'loading'      ? 'block' : 'none'
+  document.getElementById('noDataSection').style.display      = which === 'noData'       ? 'block' : 'none'
+  document.getElementById('profileSection').style.display     = which === 'profile'      ? 'block' : 'none'
+}
 
-      // Exams
-      const exams = Array.from(document.querySelectorAll('.exam-entry')).map(entry => {
-        const subject = entry.querySelector('.exam-subject').value.trim()
-        const marks   = entry.querySelector('.exam-marks').value.trim()
-        return subject && marks ? {
-          subject, marks: parseInt(marks),
-          result: entry.querySelector('.exam-result').value || 'Not Specified',
-          type:   entry.querySelector('.exam-type').value   || 'Not Specified'
-        } : null
-      }).filter(Boolean)
-      formData.exam_details = exams.length ? exams : null
+function renderProfile(student, authProfile) {
+  const attPct   = student.attendance_percentage || 0
+  const attColor = attPct >= 75 ? '#4CAF50' : '#f44336'
 
-      // Check duplicate
-      const { data: existing } = await supabase
-        .from('student_information')
-        .select('register_no')
-        .eq('register_no', formData.register_no)
-        .maybeSingle()
+  const yearSuffix = ['st','nd','rd','th'][Math.min((student.year||1) - 1, 3)]
 
-      if (existing) {
-        showToast('Register number already exists!', 'error')
-        return
-      }
+  const examsHtml = student.exam_details?.length
+    ? `<div class="exams-section">
+         <h3><i class="fas fa-graduation-cap"></i> Exam Results</h3>
+         <div class="exams-grid">
+           ${student.exam_details.map(ex => `
+             <div class="exam-result-card ${ex.result === 'Pass' ? 'exam-pass' : 'exam-fail'}">
+               <div class="exam-subj">${ex.subject}</div>
+               <div class="exam-score">Marks: ${ex.marks}/100 &bull; <strong>${ex.result}</strong> &bull; ${ex.type}</div>
+             </div>`).join('')}
+         </div>
+       </div>`
+    : `<div style="text-align:center;padding:30px;background:var(--bg-light);border-radius:var(--radius-md);color:var(--text-muted);">
+         <i class="fas fa-clipboard" style="font-size:2.5rem;margin-bottom:12px;opacity:0.4;display:block;"></i>
+         <p>No exam details recorded</p>
+       </div>`
 
-      // Image upload
-      let imageUrl = null
-      if (imgInput.files[0]) {
-        const file    = imgInput.files[0]
-        const fileExt = file.name.split('.').pop().toLowerCase()
-        const fileName= `Student_images/${formData.register_no}.${fileExt}`
-        const { error: upErr } = await supabase.storage.from('Image_files').upload(fileName, file, { upsert: true })
-        if (!upErr) {
-          const { data: urlData } = supabase.storage.from('Image_files').getPublicUrl(fileName)
-          imageUrl = urlData.publicUrl
-        }
-      }
+  const photoSrc = student.image_url
+    || `https://ui-avatars.com/api/?name=${encodeURIComponent(student.name)}&background=1a237e&color=fff&size=130`
 
-      // Insert
-      const { data: saved, error } = await supabase
-        .from('student_information')
-        .insert([{ ...formData, image_url: imageUrl }])
-        .select()
-        .single()
+  document.getElementById('profileContent').innerHTML = `
+    <div class="profile-card">
+      <div class="profile-header">
+        <img src="${photoSrc}" alt="${student.name}" class="profile-photo" />
+        <div class="profile-name">${student.name}</div>
+        <span class="profile-regno">${student.register_no}</span>
+        ${student.department ? `<div style="margin-top:8px;opacity:0.8;font-size:0.95rem;">${student.department} &bull; ${student.year}${yearSuffix} Year</div>` : ''}
+      </div>
 
-      if (error) throw error
-
-      sessionStorage.setItem('pdkv_student', JSON.stringify(saved))
-      showToast('Student data saved successfully!', 'success')
-      showProfile(saved)
-
-    } catch (err) {
-      showToast('Error: ' + err.message, 'error')
-    } finally {
-      submitBtn.innerHTML = '<i class="fas fa-save"></i> Submit Student Data'
-      submitBtn.disabled = false
-    }
-  })
-
-  // ── Back to form ──────────────────────────────────────────
-  backBtn.addEventListener('click', () => {
-    sessionStorage.removeItem('pdkv_student')
-    formSection.style.display = 'block'
-    profileSection.style.display = 'none'
-    studentForm.reset()
-    imgPreview.innerHTML = '<i class="fas fa-user-circle"></i>'
-    examEntries.innerHTML = examEntries.children[0]?.outerHTML || ''
-    attDisplay.style.display = 'none'
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  })
-
-  // ── Show profile ──────────────────────────────────────────
-  function showProfile(student) {
-    formSection.style.display = 'none'
-    profileSection.style.display = 'block'
-
-    const attPct = student.attendance_percentage || 0
-    const attColor = attPct >= 75 ? '#4CAF50' : '#f44336'
-
-    const examsHtml = student.exam_details?.length
-      ? `<div class="exams-section">
-           <h3><i class="fas fa-graduation-cap"></i> Exam Results</h3>
-           <div class="exams-grid">
-             ${student.exam_details.map(ex => `
-               <div class="exam-result-card ${ex.result === 'Pass' ? 'exam-pass' : 'exam-fail'}">
-                 <div class="exam-subj">${ex.subject}</div>
-                 <div class="exam-score">Marks: ${ex.marks}/100 &bull; ${ex.result} &bull; ${ex.type}</div>
-               </div>`).join('')}
-           </div>
-         </div>`
-      : `<div style="text-align:center;padding:30px;background:var(--bg-light);border-radius:var(--radius-md);color:var(--text-muted);">
-           <i class="fas fa-clipboard" style="font-size:2.5rem;margin-bottom:12px;opacity:0.4;display:block;"></i>
-           <p>No exam details recorded</p>
-         </div>`
-
-    document.getElementById('profileContent').innerHTML = `
-      <div class="profile-card">
-        <div class="profile-header">
-          <img src="${student.image_url || 'https://via.placeholder.com/130x130/1a237e/FFFFFF?text=' + encodeURIComponent(student.name[0])}"
-               alt="${student.name}" class="profile-photo" />
-          <div class="profile-name">${student.name}</div>
-          <span class="profile-regno">${student.register_no}</span>
+      <div class="profile-body">
+        <div class="profile-info-grid">
+          ${student.department ? `<div class="profile-info-item"><div class="profile-info-label">Department</div><div class="profile-info-value">${student.department}</div></div>` : ''}
+          ${student.year ? `<div class="profile-info-item"><div class="profile-info-label">Year</div><div class="profile-info-value">${student.year}${yearSuffix} Year</div></div>` : ''}
+          ${student.guardian_name ? `<div class="profile-info-item"><div class="profile-info-label">Guardian</div><div class="profile-info-value">${student.guardian_name}</div></div>` : ''}
+          ${student.phone ? `<div class="profile-info-item"><div class="profile-info-label">Phone</div><div class="profile-info-value">${student.phone}</div></div>` : ''}
+          ${student.email ? `<div class="profile-info-item"><div class="profile-info-label">Email</div><div class="profile-info-value">${student.email}</div></div>` : ''}
+          ${student.dob ? `<div class="profile-info-item"><div class="profile-info-label">Date of Birth</div><div class="profile-info-value">${student.dob}</div></div>` : ''}
+          ${student.linkedin ? `<div class="profile-info-item"><div class="profile-info-label">LinkedIn</div><div class="profile-info-value"><a href="${student.linkedin}" target="_blank"><i class="fas fa-link"></i> View Profile</a></div></div>` : ''}
+          ${student.github ? `<div class="profile-info-item"><div class="profile-info-label">GitHub</div><div class="profile-info-value"><a href="${student.github}" target="_blank"><i class="fas fa-link"></i> View Profile</a></div></div>` : ''}
         </div>
-        <div class="profile-body">
-          <div class="profile-info-grid">
-            <div class="profile-info-item"><div class="profile-info-label">Department</div><div class="profile-info-value">${student.department}</div></div>
-            <div class="profile-info-item"><div class="profile-info-label">Year</div><div class="profile-info-value">${student.year}${['st','nd','rd','th'][Math.min(student.year-1,3)]} Year</div></div>
-            <div class="profile-info-item"><div class="profile-info-label">Guardian</div><div class="profile-info-value">${student.guardian_name}</div></div>
-            <div class="profile-info-item"><div class="profile-info-label">Phone</div><div class="profile-info-value">${student.phone}</div></div>
-            <div class="profile-info-item"><div class="profile-info-label">Email</div><div class="profile-info-value">${student.email}</div></div>
-            <div class="profile-info-item"><div class="profile-info-label">Date of Birth</div><div class="profile-info-value">${student.dob}</div></div>
-            ${student.linkedin ? `<div class="profile-info-item"><div class="profile-info-label">LinkedIn</div><div class="profile-info-value"><a href="${student.linkedin}" target="_blank"><i class="fas fa-link"></i> View Profile</a></div></div>` : ''}
-            ${student.github   ? `<div class="profile-info-item"><div class="profile-info-label">GitHub</div><div class="profile-info-value"><a href="${student.github}" target="_blank"><i class="fas fa-link"></i> View Profile</a></div></div>` : ''}
-          </div>
 
-          <div class="attendance-card">
-            <h3><i class="fas fa-calendar-check"></i> Attendance Record</h3>
-            <div class="attendance-stats">
-              <div class="att-stat">
-                <span class="att-num" style="color:${attColor};">${attPct}%</span>
-                <span class="att-label">Attendance %</span>
-              </div>
-              <div class="att-stat">
-                <span class="att-num">${student.present_days}</span>
-                <span class="att-label">Days Present</span>
-              </div>
-              <div class="att-stat">
-                <span class="att-num">${student.absent_days}</span>
-                <span class="att-label">Days Absent</span>
-              </div>
-              <div class="att-stat">
-                <span class="att-num">${student.total_days}</span>
-                <span class="att-label">Total Days</span>
-              </div>
+        ${(student.total_days || student.present_days) ? `
+        <div class="attendance-card">
+          <h3><i class="fas fa-calendar-check"></i> Attendance Record</h3>
+          <div class="attendance-stats">
+            <div class="att-stat">
+              <span class="att-num" style="color:${attColor};">${attPct}%</span>
+              <span class="att-label">Attendance %</span>
+            </div>
+            <div class="att-stat">
+              <span class="att-num">${student.present_days || 0}</span>
+              <span class="att-label">Days Present</span>
+            </div>
+            <div class="att-stat">
+              <span class="att-num">${student.absent_days || 0}</span>
+              <span class="att-label">Days Absent</span>
+            </div>
+            <div class="att-stat">
+              <span class="att-num">${student.total_days || 0}</span>
+              <span class="att-label">Total Days</span>
             </div>
           </div>
+          ${attPct < 75 && attPct > 0 ? `<div style="margin-top:14px;padding:10px 14px;background:rgba(244,67,54,0.1);border-radius:8px;color:#c62828;font-size:0.88rem;font-weight:600;text-align:center;">
+            ⚠️ Attendance below 75% — condonation required
+          </div>` : attPct >= 75 ? `<div style="margin-top:14px;padding:10px 14px;background:rgba(76,175,80,0.1);border-radius:8px;color:#388E3C;font-size:0.88rem;font-weight:600;text-align:center;">
+            ✅ Good attendance — eligible for examinations
+          </div>` : ''}
+        </div>` : ''}
 
-          ${examsHtml}
-        </div>
-      </div>`
+        ${examsHtml}
+      </div>
+    </div>`
 
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-    initScrollAnimations()
-  }
-})
+  initScrollAnimations()
+}
