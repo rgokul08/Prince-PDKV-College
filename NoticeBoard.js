@@ -1,8 +1,9 @@
 import { supabase } from './supabaseClient.js'
-import { initStickyHeader, initHamburger, initScrollAnimations, openModal, closeModal, initModalCloseHandlers, showToast, initAuth, openAuthModal, logoutUser, getCurrentUser, getUserProfile, onAuthChange } from './shared.js'
+import { initStickyHeader, initHamburger, initScrollAnimations, openModal, closeModal, initModalCloseHandlers, showToast, initAuth, openAuthModal, logoutUser, getCurrentUser, getUserProfile, onAuthChange, initRipple, showSkeletonNotices , initPageTransitions } from './shared.js'
 
 let notices       = []
 let currentFilter = 'all'
+let searchQuery   = ''
 
 const TYPE_CONFIG = {
   event:  { emoji: '🎉', label: 'Event',  color: '#4CAF50', badgeClass: 'badge-green' },
@@ -14,10 +15,13 @@ const TYPE_CONFIG = {
 document.addEventListener('DOMContentLoaded', async () => {
   initStickyHeader()
   initHamburger()
+  initPageTransitions()
   initScrollAnimations()
   initModalCloseHandlers()
+  initRipple()
   setupFilters()
   setupRegisterForm()
+  showSkeletonNotices()
 
   // Init global auth
   await initAuth()
@@ -65,13 +69,22 @@ async function loadNotices() {
 function renderNotices() {
   const currentUser = getCurrentUser()
   const container = document.getElementById('noticesList')
-  const filtered = currentFilter === 'all' ? notices : notices.filter(n => n.type === currentFilter)
+  let filtered = currentFilter === 'all' ? notices : notices.filter(n => n.type === currentFilter)
+
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase()
+    filtered = filtered.filter(n =>
+      (n.title || '').toLowerCase().includes(q) ||
+      (n.description || '').toLowerCase().includes(q) ||
+      (n.type || '').toLowerCase().includes(q)
+    )
+  }
 
   if (filtered.length === 0) {
     container.innerHTML = `
       <div class="nb-empty">
         <div class="nb-empty-icon">📭</div>
-        <p>No ${currentFilter === 'all' ? '' : currentFilter + ' '}notices found.</p>
+        <p>No ${searchQuery ? `results for "<strong>${searchQuery}</strong>"` : (currentFilter === 'all' ? '' : currentFilter + ' ') + 'notices found.'}.</p>
       </div>`
     return
   }
@@ -136,6 +149,16 @@ function setupFilters() {
       currentFilter = btn.dataset.type
       renderNotices()
     })
+  })
+
+  // Live search
+  let searchDebounce
+  document.getElementById('nbSearchInput')?.addEventListener('input', (e) => {
+    clearTimeout(searchDebounce)
+    searchDebounce = setTimeout(() => {
+      searchQuery = e.target.value.trim()
+      renderNotices()
+    }, 250)
   })
 }
 

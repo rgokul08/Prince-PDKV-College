@@ -255,3 +255,130 @@
   .courses-grid { grid-template-columns: 1fr; }
   .course-img-wrap { height: 160px; }
 }
+
+/* ── COURSES EXTRA ANIMATIONS ── */
+.course-card {
+  transition: all 0.4s cubic-bezier(0.34, 1.2, 0.64, 1);
+}
+
+.course-card:hover {
+  transform: translateY(-12px) scale(1.01);
+  box-shadow: 0 28px 60px rgba(26,35,126,0.15);
+}
+
+.cf-btn {
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.cf-btn:hover,
+.cf-btn.active {
+  transform: translateY(-3px) scale(1.04);
+  box-shadow: 0 8px 24px rgba(26,35,126,0.3);
+}
+
+.course-overlay {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  transform: translateY(10px);
+}
+
+.course-card:hover .course-overlay {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.course-img-wrap img {
+  transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.course-card:hover .course-img-wrap img {
+  transform: scale(1.1);
+}
+
+/* Badge animate */
+.course-info .badge {
+  display: inline-flex;
+  margin-top: 4px;
+  animation: none;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.course-card:hover .course-info .badge {
+  transform: scale(1.08) translateY(-1px);
+}
+
+/* ── MODAL ENHANCEMENTS ── */
+.modal-img-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 60%, rgba(26,35,126,0.5) 100%);
+  border-radius: var(--radius-md);
+  pointer-events: none;
+}
+
+.modal-course-img-wrap {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  height: 220px;
+  margin-bottom: 16px;
+}
+
+.modal-course-img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.6s ease;
+}
+
+.modal-course-img-wrap:hover img {
+  transform: scale(1.04);
+}
+
+/* Highlights grid */
+.modal-highlights-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.modal-highlight-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  background: rgba(76,175,80,0.1);
+  border: 1px solid rgba(76,175,80,0.25);
+  border-radius: 50px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent-dark);
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: chipIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.modal-highlight-chip:nth-child(1) { animation-delay: 0.05s; }
+.modal-highlight-chip:nth-child(2) { animation-delay: 0.10s; }
+.modal-highlight-chip:nth-child(3) { animation-delay: 0.15s; }
+.modal-highlight-chip:nth-child(4) { animation-delay: 0.20s; }
+
+@keyframes chipIn {
+  from { opacity: 0; transform: scale(0.7) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.modal-highlight-chip:hover {
+  background: rgba(76,175,80,0.2);
+  transform: translateY(-2px) scale(1.05);
+}
+
+.modal-highlight-chip i {
+  color: var(--accent);
+  font-size: 0.75rem;
+}
+
+/* Course card hover title color change */
+.course-card:hover .course-info h3 {
+  color: var(--accent2-dark);
+  transition: color 0.3s ease;
+}

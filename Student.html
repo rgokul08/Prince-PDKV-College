@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="description" content="Access your academic records, attendance and exam results through the student portal." />
+  <meta name="theme-color" content="#1a237e" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Student Portal - Prince Dr K Vasudevan College</title>
   <link rel="shortcut icon" href="https://yt3.googleusercontent.com/ytc/AIdro_k_qv60q5J-ADkI2QNCezEuT1zrK5KTSCIZMtIrhxphKU8=s900-c-k-c0x00ffffff-no-rj" type="image/x-icon" />
@@ -9,6 +11,7 @@
   <link rel="stylesheet" href="/Student.css" />
 </head>
 <body>
+  <div class="page-transition-overlay" id="pageTransition"></div>
 
   <!-- HEADER -->
   <header class="site-header" id="siteHeader">
@@ -90,6 +93,9 @@
         </div>
       </div>
 
+      <!-- SETUP PROFILE SECTION (new user) -->
+      <div id="setupProfileSection" style="display:none;"></div>
+
       <!-- PROFILE SECTION -->
       <div id="profileSection" style="display:none;">
         <div id="profileContent" class="animate-fade-up"></div>
@@ -108,6 +114,14 @@
           <p class="footer-sub">of Engineering &amp; Technology</p>
         </div>
       </div>
+      <div class="footer-social">
+        <a href="https://www.facebook.com/pdkvce" target="_blank" class="footer-social-btn" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+        <a href="https://www.instagram.com/pdkvce" target="_blank" class="footer-social-btn" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+        <a href="https://www.youtube.com/@pdkvce" target="_blank" class="footer-social-btn" aria-label="YouTube"><i class="fab fa-youtube"></i></a>
+        <a href="https://www.linkedin.com/school/prince-dr-k-vasudevan-college" target="_blank" class="footer-social-btn" aria-label="LinkedIn"><i class="fab fa-linkedin-in"></i></a>
+        <a href="https://www.princedrkvasudevan.com" target="_blank" class="footer-social-btn" aria-label="Website"><i class="fas fa-globe"></i></a>
+      </div>
+      <div class="footer-divider"></div>
       <div class="footer-links">
         <a href="index.html">Home</a>
         <a href="Courses.html">Courses</a>
@@ -115,7 +129,8 @@
         <a href="Student.html">Students</a>
         <a href="About.html">About Us</a>
       </div>
-      <p class="footer-copy">&copy; 2026 Prince Dr K Vasudevan College of Engineering &amp; Technology</p>
+      <p class="footer-copy">&copy; 2026 Prince Dr K Vasudevan College of Engineering &amp; Technology &nbsp;|&nbsp; TNEA Code: 4116</p>
+      <p class="footer-addr">Medavakkam-Mambakkam Main Road, Ponmar, Chennai - 600 127</p>
     </div>
   </footer>
 

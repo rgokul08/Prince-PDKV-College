@@ -1,75 +1,75 @@
-import { initStickyHeader, initHamburger, initScrollAnimations, openModal, closeModal, initModalCloseHandlers, showToast, initAuth, openAuthModal, logoutUser } from './shared.js'
+import { initStickyHeader, initHamburger, initScrollAnimations, openModal, closeModal, initModalCloseHandlers, showToast, initAuth, openAuthModal, logoutUser, initRipple , initPageTransitions } from './shared.js'
 
 const courseData = {
   'btech-cse': {
     title: 'B.Tech Computer Science and Engineering',
-    badge: 'B.Tech • 4 Years',
-    badgeClass: 'badge-blue',
-    seats: '60 Seats',
+    badge: 'B.Tech • UG', badgeClass: 'badge-blue',
+    duration: '4 Years', seats: '60 Seats',
     desc: 'A flagship 4-year undergraduate program affiliated with Anna University. Focuses on software development, algorithms, artificial intelligence, data science, and networking. Strong industry placements in TCS, Infosys, Zoho, and more.',
+    highlights: ['Anna University Affiliated', 'AICTE Approved', 'Admission via TNEA', 'AI & Data Science Tracks'],
     link: 'https://www.princedrkvasudevan.com/departments/BE.CSE.html',
     img: 'https://ddn.gehu.ac.in/uploads/image/Nw1oCYC1-trending-course-gehu-1-jpg.webp'
   },
   'btech-ece': {
     title: 'B.Tech Electronics & Communication Engineering',
-    badge: 'B.Tech • 4 Years',
-    badgeClass: 'badge-green',
-    seats: '60 Seats',
+    badge: 'B.Tech • UG', badgeClass: 'badge-green',
+    duration: '4 Years', seats: '60 Seats',
     desc: '4-year program covering communication systems, VLSI design, embedded systems, and signal processing. Anna University affiliated, AICTE approved. Total fees approx. ₹2 Lakh. Admission via TNEA.',
+    highlights: ['Communication Systems', 'VLSI & Embedded', 'Signal Processing', 'Fees ~₹2 Lakh'],
     link: 'https://www.shiksha.com/college/prince-dr-k-vasudevan-college-of-engineering-and-technology-chennai-53970/course-b-e-in-electronics-and-communication-engineering-539701',
     img: 'https://sru.edu.in/assets/schools/ece/ece.png'
   },
   'btech-mech': {
     title: 'B.Tech Mechanical Engineering',
-    badge: 'B.Tech • 4 Years',
-    badgeClass: 'badge-gold',
-    seats: '60 Seats',
+    badge: 'B.Tech • UG', badgeClass: 'badge-gold',
+    duration: '4 Years', seats: '60 Seats',
     desc: '4-year UG program focusing on design, manufacturing, and thermal engineering. Lateral entry available (3 years). Strong industry connections and hands-on lab experience with modern machinery.',
+    highlights: ['Design & Manufacturing', 'Thermal Engineering', 'Lateral Entry Available', 'Modern Lab Facilities'],
     link: 'https://www.shiksha.com/college/prince-dr-k-vasudevan-college-of-engineering-and-technology-chennai-53970/courses/be-btech-bc',
     img: 'https://cache.careers360.mobi/media/article_images/2020/5/6/B-Tech-in-Mechanical-and-Automation-Engineering.jpg'
   },
   'btech-civil': {
     title: 'B.Tech Civil Engineering',
-    badge: 'B.Tech • 4 Years',
-    badgeClass: 'badge-blue',
-    seats: '60 Seats',
+    badge: 'B.Tech • UG', badgeClass: 'badge-blue',
+    duration: '4 Years', seats: '60 Seats',
     desc: '4-year program covering structural engineering, construction management, geotechnical engineering, and environmental engineering. Anna University affiliated. Emphasis on practical training and site visits.',
+    highlights: ['Structural Engineering', 'Construction Management', 'Geo-Technical', 'Site Visit Training'],
     link: 'https://www.princedrkvasudevan.com',
     img: 'https://sijoul.sandipuniversity.edu.in/engineering-technology/images/header/UG/Civil.jpg'
   },
   'mtech-cse': {
     title: 'M.Tech Computer Science and Engineering',
-    badge: 'M.Tech • 2 Years',
-    badgeClass: 'badge-red',
-    seats: '9 Seats',
+    badge: 'M.Tech • PG', badgeClass: 'badge-red',
+    duration: '2 Years', seats: '9 Seats',
     desc: '2-year postgraduate program with only 9 seats, admission via GATE/TANCET. Advanced topics in algorithms, cloud computing, machine learning, and distributed networks. Excellent for research aspirants.',
+    highlights: ['GATE / TANCET Admission', 'Only 9 Seats', 'ML & Cloud Computing', 'Research Oriented'],
     link: 'https://www.shiksha.com/college/prince-dr-k-vasudevan-college-of-engineering-and-technology-chennai-53970/courses/me-mtech-bc',
     img: 'https://theredpen.in/wp-content/uploads/2024/09/medium-shot-man-wearing-vr-glasses-1-scaled.jpg'
   },
   'mtech-vlsi': {
     title: 'M.Tech VLSI Design',
-    badge: 'M.Tech • 2 Years',
-    badgeClass: 'badge-red',
-    seats: '18 Seats',
+    badge: 'M.Tech • PG', badgeClass: 'badge-red',
+    duration: '2 Years', seats: '18 Seats',
     desc: '2-year PG program focusing on CMOS design, semiconductor technology, HDL programming, and embedded systems. High industry demand with excellent career prospects in chip design companies.',
+    highlights: ['CMOS & HDL Design', 'Semiconductor Tech', 'Chip Design Careers', 'High Industry Demand'],
     link: 'https://www.princedrkvasudevan.com',
     img: 'https://www.msruas.ac.in/assets/frontend/images/oview-img-vlsi.webp'
   },
   'mba': {
     title: 'Master of Business Administration (MBA)',
-    badge: 'MBA • 2 Years',
-    badgeClass: 'badge-gold',
-    seats: '60 Seats',
+    badge: 'MBA • PG', badgeClass: 'badge-gold',
+    duration: '2 Years', seats: '60 Seats',
     desc: '2-year full-time MBA program affiliated with Anna University, AICTE approved. Specializations in marketing, finance, and HR. Features industry projects, internships, and guest lectures from business leaders.',
+    highlights: ['Marketing / Finance / HR', 'Industry Projects', 'Guest Lectures', 'Anna University Affiliated'],
     link: 'https://psvpec.in/mba/',
     img: 'https://media.istockphoto.com/id/1159875854/photo/mba-with-man.jpg?s=612x612&w=0&k=20&c=fm3BxaCV0OksY-P-khvO7mv1jdWLYHFlYEPaHEvZlVo='
   },
   'arts': {
     title: 'Arts and Humanities',
-    badge: 'Arts & Humanities',
-    badgeClass: 'badge-green',
-    seats: 'Multiple',
+    badge: 'Arts • UG', badgeClass: 'badge-green',
+    duration: '3 Years', seats: 'Multiple',
     desc: 'Programs fostering critical thinking, communication, and cultural studies. Prepares students for diverse career paths in education, media, public service, and creative industries.',
+    highlights: ['Critical Thinking', 'Communication Skills', 'Cultural Studies', 'Diverse Career Paths'],
     link: 'https://www.princedrkvasudevan.com',
     img: 'https://t3.ftcdn.net/jpg/16/92/35/14/360_F_1692351410_kBjDpoScGMXZf0ZA28VEKTWLTV5KnO6P.jpg'
   }
@@ -78,8 +78,10 @@ const courseData = {
 document.addEventListener('DOMContentLoaded', async () => {
   initStickyHeader()
   initHamburger()
+  initPageTransitions()
   initScrollAnimations()
   initModalCloseHandlers()
+  initRipple()
 
   // Init global auth
   await initAuth()
@@ -97,8 +99,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!data) return
 
       document.getElementById('modalTitle').textContent = data.title
-      document.getElementById('modalImg').src = data.img
-      document.getElementById('modalImg').alt = data.title
+      const img = document.getElementById('modalImg')
+      img.src = ''; img.src = data.img   // force reload animation
+      img.alt = data.title
       document.getElementById('modalDesc').textContent = data.desc
       document.getElementById('modalLink').href = data.link
 
@@ -108,6 +111,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       const seats = document.getElementById('modalSeats')
       seats.innerHTML = `<i class="fas fa-users"></i> ${data.seats}`
+
+      const dur = document.getElementById('modalDuration')
+      if (dur) {
+        dur.innerHTML = `<i class="fas fa-clock"></i> ${data.duration}`
+        dur.style.display = data.duration ? '' : 'none'
+      }
+
+      const hl = document.getElementById('modalHighlights')
+      if (hl && data.highlights?.length) {
+        hl.innerHTML = `<div class="modal-highlights-grid">${data.highlights.map(h =>
+          `<span class="modal-highlight-chip"><i class="fas fa-check-circle"></i> ${h}</span>`
+        ).join('')}</div>`
+      } else if (hl) { hl.innerHTML = '' }
 
       openModal('courseModal')
     })

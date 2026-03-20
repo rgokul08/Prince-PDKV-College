@@ -26,8 +26,35 @@ export function showToast(message, type = 'success', duration = 4000) {
 export function initStickyHeader() {
   const header = document.querySelector('.site-header')
   if (!header) return
+
+  // Inject scroll progress bar
+  if (!document.getElementById('scrollProgressBar')) {
+    const bar = document.createElement('div')
+    bar.id = 'scrollProgressBar'
+    document.body.prepend(bar)
+  }
+
+  // Inject back-to-top button
+  if (!document.getElementById('backToTop')) {
+    const btn = document.createElement('button')
+    btn.id = 'backToTop'
+    btn.setAttribute('aria-label', 'Back to top')
+    btn.innerHTML = '<i class="fas fa-chevron-up"></i>'
+    btn.addEventListener('click', () => {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    })
+    document.body.appendChild(btn)
+  }
+
   window.addEventListener('scroll', () => {
     header.classList.toggle('scrolled', window.scrollY > 80)
+    const bar = document.getElementById('scrollProgressBar')
+    if (bar) {
+      const docH = document.documentElement.scrollHeight - window.innerHeight
+      bar.style.width = (docH > 0 ? (window.scrollY / docH) * 100 : 0) + '%'
+    }
+    const btt = document.getElementById('backToTop')
+    if (btt) btt.classList.toggle('visible', window.scrollY > 400)
   }, { passive: true })
 }
 
@@ -59,17 +86,19 @@ export function initHamburger() {
 
 // ── Intersection Observer for fade-up animations ─────────
 export function initScrollAnimations() {
-  const els = document.querySelectorAll('.animate-fade-up')
+  const els = document.querySelectorAll('.animate-fade-up:not(.visible)')
   if (!els.length) return
 
   const observer = new IntersectionObserver((entries) => {
     entries.forEach((entry, i) => {
       if (entry.isIntersecting) {
-        setTimeout(() => entry.target.classList.add('visible'), i * 80)
+        setTimeout(() => {
+          entry.target.classList.add('visible')
+        }, i * 90)
         observer.unobserve(entry.target)
       }
     })
-  }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' })
+  }, { threshold: 0.08, rootMargin: '0px 0px -30px 0px' })
 
   els.forEach(el => observer.observe(el))
 }
@@ -390,4 +419,79 @@ export function openAuthModal(tab = 'login') {
 export async function logoutUser() {
   await supabase.auth.signOut()
   showToast('Logged out successfully!', 'info')
+}
+// ── Ripple effect on .btn elements ───────────────────────
+export function initRipple() {
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn')
+    if (!btn) return
+    const rect = btn.getBoundingClientRect()
+    const size = Math.max(rect.width, rect.height) * 2
+    const x = e.clientX - rect.left - size / 2
+    const y = e.clientY - rect.top  - size / 2
+    const ripple = document.createElement('span')
+    ripple.className = 'ripple'
+    ripple.style.cssText = `width:${size}px;height:${size}px;left:${x}px;top:${y}px;`
+    btn.appendChild(ripple)
+    ripple.addEventListener('animationend', () => ripple.remove())
+  })
+}
+
+// ── Tilt effect on cards ─────────────────────────────────
+export function initTiltCards(selector = '.fact-card, .qlink-card, .about-stat-card') {
+  document.querySelectorAll(selector).forEach(card => {
+    card.addEventListener('mousemove', (e) => {
+      const rect = card.getBoundingClientRect()
+      const cx = rect.left + rect.width  / 2
+      const cy = rect.top  + rect.height / 2
+      const dx = (e.clientX - cx) / (rect.width  / 2)
+      const dy = (e.clientY - cy) / (rect.height / 2)
+      card.style.transform = `translateY(-10px) rotateX(${-dy * 5}deg) rotateY(${dx * 5}deg) scale(1.02)`
+    })
+    card.addEventListener('mouseleave', () => {
+      card.style.transform = ''
+      card.style.transition = 'transform 0.5s cubic-bezier(0.34, 1.2, 0.64, 1)'
+    })
+    card.addEventListener('mouseenter', () => {
+      card.style.transition = 'transform 0.15s ease'
+    })
+  })
+}
+
+// ── Skeleton notice cards (3 placeholders) ───────────────
+export function showSkeletonNotices(containerId = 'noticesList') {
+  const container = document.getElementById(containerId)
+  if (!container) return
+  container.innerHTML = Array(3).fill(0).map(() => `
+    <div class="skeleton-card">
+      <div class="skeleton skeleton-line short"></div>
+      <div class="skeleton skeleton-line tall" style="width:80%;margin-top:4px;"></div>
+      <div class="skeleton skeleton-line medium"></div>
+      <div class="skeleton skeleton-line full"></div>
+      <div class="skeleton skeleton-line full"></div>
+      <div class="skeleton skeleton-line" style="height:40px;border-radius:10px;margin-top:8px;"></div>
+    </div>`).join('')
+}
+
+// ── Page transition on internal nav links ────────────────
+export function initPageTransitions() {
+  const overlay = document.getElementById('pageTransition')
+  if (!overlay) return
+
+  document.querySelectorAll('a[href]').forEach(link => {
+    const href = link.getAttribute('href')
+    if (!href || href.startsWith('http') || href.startsWith('#') || href.startsWith('mailto') || href.startsWith('tel')) return
+    if (link.target === '_blank') return
+
+    link.addEventListener('click', (e) => {
+      e.preventDefault()
+      overlay.classList.add('leaving')
+      setTimeout(() => { window.location.href = href }, 280)
+    })
+  })
+}
+
+// ── Smooth number format helper ───────────────────────────
+export function formatNumber(n) {
+  return n.toLocaleString('en-IN')
 }
