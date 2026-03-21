@@ -99,7 +99,7 @@
           <div class="course-info"><span class="badge badge-red">M.Tech • 2 Years</span><h3>M.Tech VLSI Design</h3><p>CMOS design, semiconductor tech &amp; HDL</p><div class="course-meta"><span><i class="fas fa-users"></i> 18 Seats</span><span><i class="fas fa-clock"></i> 2 Years</span></div></div>
         </div>
         <div class="course-card animate-fade-up" data-category="other" data-course="mba">
-          <div class="course-img-wrap"><img src="https://media.istockphoto.com/id/1159875854/photo/mba-with-man.jpg?s=612x612&w=0&k=20&c=fm3BxaCV0OksY-P-khvO7mv1jdWLYHFlYEPaHEvZlVo=" alt="MBA" loading="lazy" /><div class="course-overlay"><i class="fas fa-eye"></i> View Details</div></div>
+          <div class="course-img-wrap"><img src="https://media.istockphoto.com/id/1159875854/photo/mba-with-man.jpg?s=612x612&w=0&k=20&c=fm3BxaCV0OksY-P6r8nP_khvO7mv1jdWLYHFlYEPaHEvZlVo=" alt="MBA" loading="lazy" /><div class="course-overlay"><i class="fas fa-eye"></i> View Details</div></div>
           <div class="course-info"><span class="badge badge-gold">MBA • 2 Years</span><h3>Master of Business Administration</h3><p>Marketing, finance, HR &amp; industry projects</p><div class="course-meta"><span><i class="fas fa-users"></i> 60 Seats</span><span><i class="fas fa-clock"></i> 2 Years</span></div></div>
         </div>
       </div>
@@ -126,11 +126,11 @@
         </div>
 
         <form id="admissionForm" novalidate>
-          <!-- STEP 1: Personal -->
+
+          <!-- ══ STEP 1: Personal Info ══ -->
           <div class="adm-panel" id="adm-panel-1">
             <h3 class="adm-panel-title"><i class="fas fa-user"></i> Personal Information</h3>
 
-            <!-- UG or PG toggle -->
             <div class="adm-type-toggle">
               <label class="adm-type-btn active" id="adm-ug-lbl">
                 <input type="radio" name="applicantType" value="UG" checked id="adm-ug" />
@@ -153,37 +153,80 @@
               <div class="form-group"><label class="form-label"><i class="fas fa-tag"></i> Category *</label>
                 <select id="adm-category" class="form-select" required><option value="">Select Category</option><option>OC</option><option>BC</option><option>MBC</option><option>SC</option><option>ST</option></select>
               </div>
+              <div class="form-group"><label class="form-label"><i class="fas fa-ticket-alt"></i> Quota</label>
+                <select id="adm-quota" class="form-select"><option value="">Select Quota</option><option>Government (TNEA)</option><option>Management</option></select>
+              </div>
               <div class="form-group adm-full"><label class="form-label"><i class="fas fa-map-marker-alt"></i> Address *</label><textarea id="adm-address" class="form-textarea" rows="3" placeholder="Door No., Street, Area…" required></textarea></div>
               <div class="form-group"><label class="form-label"><i class="fas fa-city"></i> City *</label><input type="text" id="adm-city" class="form-input" placeholder="City" required /></div>
               <div class="form-group"><label class="form-label"><i class="fas fa-map"></i> State *</label><input type="text" id="adm-state" class="form-input" placeholder="State" value="Tamil Nadu" required /></div>
               <div class="form-group"><label class="form-label"><i class="fas fa-mail-bulk"></i> Pincode *</label><input type="text" id="adm-pincode" class="form-input" placeholder="600127" required /></div>
             </div>
-            <div class="adm-nav"><button type="button" class="btn btn-primary adm-next" onclick="admNext(1)">Next <i class="fas fa-arrow-right"></i></button></div>
+            <div class="adm-nav"><button type="button" class="btn btn-primary" onclick="admNext(1)">Next <i class="fas fa-arrow-right"></i></button></div>
           </div>
 
-          <!-- STEP 2: Academic -->
+          <!-- ══ STEP 2: Academic Details ══ -->
           <div class="adm-panel" id="adm-panel-2" style="display:none;">
             <h3 class="adm-panel-title"><i class="fas fa-graduation-cap"></i> Academic Details</h3>
+
+            <!-- 10th -->
+            <h4 class="adm-sub-heading"><i class="fas fa-school"></i> 10th Standard Details</h4>
             <div class="adm-grid">
-              <div class="form-group"><label class="form-label"><i class="fas fa-percentage"></i> 10th Percentage *</label><input type="number" id="adm-tenth" class="form-input" placeholder="e.g. 92.5" min="0" max="100" step="0.01" required /></div>
-              <div class="form-group"><label class="form-label"><i class="fas fa-school"></i> 10th School Name *</label><input type="text" id="adm-tenthSchool" class="form-input" placeholder="School name" required /></div>
-              <div class="form-group"><label class="form-label"><i class="fas fa-calendar"></i> 10th Year of Passing *</label><input type="number" id="adm-tenthYear" class="form-input" placeholder="e.g. 2022" min="2000" max="2030" required /></div>
-              <div class="form-group"><label class="form-label"><i class="fas fa-percentage"></i> 12th Percentage *</label><input type="number" id="adm-twelfth" class="form-input" placeholder="e.g. 88.5" min="0" max="100" step="0.01" required /></div>
-              <div class="form-group"><label class="form-label"><i class="fas fa-school"></i> 12th School / College *</label><input type="text" id="adm-twelfthSchool" class="form-input" placeholder="School/College name" required /></div>
-              <div class="form-group"><label class="form-label"><i class="fas fa-calendar"></i> 12th Year of Passing *</label><input type="number" id="adm-twelfthYear" class="form-input" placeholder="e.g. 2024" min="2000" max="2030" required /></div>
-              <div class="form-group"><label class="form-label"><i class="fas fa-book"></i> 12th Stream *</label>
+              <div class="form-group"><label class="form-label">10th School Name *</label><input type="text" id="adm-tenthSchool" class="form-input" placeholder="School name" required /></div>
+              <div class="form-group"><label class="form-label">10th Board *</label>
+                <select id="adm-tenthBoard" class="form-select" required>
+                  <option value="">Select Board</option><option>Tamil Nadu State Board</option><option>CBSE</option><option>ICSE</option><option>Matriculation</option><option>Other</option>
+                </select>
+              </div>
+              <div class="form-group"><label class="form-label">10th Year of Passing *</label><input type="number" id="adm-tenthYear" class="form-input" placeholder="e.g. 2022" min="2000" max="2030" required /></div>
+              <div class="form-group"><label class="form-label">10th Percentage *</label><input type="number" id="adm-tenth" class="form-input" placeholder="e.g. 92.5" min="0" max="100" step="0.01" required /></div>
+            </div>
+
+            <!-- 12th -->
+            <h4 class="adm-sub-heading"><i class="fas fa-school"></i> 12th Standard Details</h4>
+            <div class="adm-grid">
+              <div class="form-group"><label class="form-label">12th School / College *</label><input type="text" id="adm-twelfthSchool" class="form-input" placeholder="School/College name" required /></div>
+              <div class="form-group"><label class="form-label">12th Board *</label>
+                <select id="adm-twelfthBoard" class="form-select" required>
+                  <option value="">Select Board</option><option>Tamil Nadu State Board</option><option>CBSE</option><option>ICSE</option><option>Matriculation</option><option>Other</option>
+                </select>
+              </div>
+              <div class="form-group"><label class="form-label">12th Year of Passing *</label><input type="number" id="adm-twelfthYear" class="form-input" placeholder="e.g. 2024" min="2000" max="2030" required /></div>
+              <div class="form-group"><label class="form-label">12th Stream *</label>
                 <select id="adm-stream" class="form-select" required><option value="">Select Stream</option><option>Science (PCM)</option><option>Science (PCB)</option><option>Commerce</option><option>Arts</option></select>
+              </div>
+              <div class="form-group"><label class="form-label">12th Overall Percentage *</label><input type="number" id="adm-twelfth" class="form-input" placeholder="e.g. 88.5" min="0" max="100" step="0.01" required /></div>
+            </div>
+
+            <!-- Subject-wise Marks -->
+            <h4 class="adm-sub-heading"><i class="fas fa-list-ol"></i> Subject-wise Marks (12th)</h4>
+            <div class="adm-grid">
+              <div class="form-group"><label class="form-label"><i class="fas fa-atom"></i> Physics</label><input type="number" id="adm-physics" class="form-input" placeholder="Marks out of 100" min="0" max="100" step="0.01" /></div>
+              <div class="form-group"><label class="form-label"><i class="fas fa-flask"></i> Chemistry</label><input type="number" id="adm-chemistry" class="form-input" placeholder="Marks out of 100" min="0" max="100" step="0.01" /></div>
+              <div class="form-group"><label class="form-label"><i class="fas fa-square-root-alt"></i> Mathematics</label><input type="number" id="adm-maths" class="form-input" placeholder="Marks out of 100" min="0" max="100" step="0.01" /></div>
+              <div class="form-group"><label class="form-label"><i class="fas fa-leaf"></i> Biology</label><input type="number" id="adm-biology" class="form-input" placeholder="Marks out of 100" min="0" max="100" step="0.01" /></div>
+              <div class="form-group"><label class="form-label"><i class="fas fa-book"></i> English</label><input type="number" id="adm-english" class="form-input" placeholder="Marks out of 100" min="0" max="100" step="0.01" /></div>
+              <div class="form-group">
+                <label class="form-label"><i class="fas fa-calculator"></i> Cutoff Mark</label>
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <input type="hidden" id="adm-cutoff" />
+                  <div style="padding:12px 16px;border:2px solid var(--border);border-radius:10px;background:#f8fafc;font-weight:700;color:var(--primary);min-width:120px;text-align:center;">
+                    <span id="adm-cutoff-display">—</span> <small style="color:var(--text-muted);font-weight:400;">(auto)</small>
+                  </div>
+                  <small style="color:var(--text-muted);">Calculated automatically from Physics, Chemistry &amp; Maths/Biology</small>
+                </div>
               </div>
             </div>
 
-            <!-- PG Section (hidden by default) -->
+            <!-- PG Section -->
             <div id="adm-pg-section" style="display:none;">
-              <h4 class="adm-sub-heading"><i class="fas fa-university"></i> UG Degree Details (for PG applicants)</h4>
+              <h4 class="adm-sub-heading"><i class="fas fa-university"></i> UG Degree Details (for PG Applicants)</h4>
               <div class="adm-grid">
                 <div class="form-group"><label class="form-label">UG Degree *</label><input type="text" id="adm-ugDegree" class="form-input" placeholder="e.g. B.E. Computer Science" /></div>
                 <div class="form-group"><label class="form-label">UG College *</label><input type="text" id="adm-ugCollege" class="form-input" placeholder="College name" /></div>
-                <div class="form-group"><label class="form-label">UG Percentage *</label><input type="number" id="adm-ugPct" class="form-input" placeholder="e.g. 78.5" min="0" max="100" step="0.01" /></div>
+                <div class="form-group"><label class="form-label">UG University</label><input type="text" id="adm-ugUniversity" class="form-input" placeholder="e.g. Anna University" /></div>
                 <div class="form-group"><label class="form-label">UG Year of Passing</label><input type="number" id="adm-ugYear" class="form-input" placeholder="e.g. 2024" /></div>
+                <div class="form-group"><label class="form-label">UG CGPA (out of 10)</label><input type="number" id="adm-ugCgpa" class="form-input" placeholder="e.g. 8.5" min="0" max="10" step="0.01" /></div>
+                <div class="form-group"><label class="form-label">UG Percentage</label><input type="number" id="adm-ugPct" class="form-input" placeholder="e.g. 78.5" min="0" max="100" step="0.01" /></div>
               </div>
             </div>
 
@@ -193,7 +236,7 @@
             </div>
           </div>
 
-          <!-- STEP 3: Course Selection -->
+          <!-- ══ STEP 3: Course Selection ══ -->
           <div class="adm-panel" id="adm-panel-3" style="display:none;">
             <h3 class="adm-panel-title"><i class="fas fa-book-open"></i> Course Preference</h3>
             <div class="adm-grid">
@@ -234,16 +277,29 @@
                   <optgroup label="Other"><option>Master of Business Administration (MBA)</option></optgroup>
                 </select>
               </div>
+              <div class="form-group adm-full"><label class="form-label"><i class="fas fa-circle"></i> Third Preference (Optional)</label>
+                <select id="adm-course3" class="form-select">
+                  <option value="">Select (Optional)</option>
+                  <optgroup label="B.Tech (UG)">
+                    <option>B.Tech Computer Science &amp; Engineering (CSE)</option>
+                    <option>B.Tech Artificial Intelligence &amp; Data Science (AIDS)</option>
+                    <option>B.Tech Cyber Security (CYBER)</option>
+                    <option>B.Tech Electronics &amp; Communication Engineering (ECE)</option>
+                    <option>B.Tech Electrical &amp; Electronics Engineering (EEE)</option>
+                    <option>B.Tech Mechanical Engineering (MECH)</option>
+                    <option>B.Tech Civil Engineering (CIVIL)</option>
+                  </optgroup>
+                  <optgroup label="M.Tech (PG)"><option>M.Tech Computer Science &amp; Engineering</option><option>M.Tech VLSI Design</option></optgroup>
+                  <optgroup label="Other"><option>Master of Business Administration (MBA)</option></optgroup>
+                </select>
+              </div>
               <div class="form-group"><label class="form-label"><i class="fas fa-file-alt"></i> Entrance Exam</label>
-                <select id="adm-entrance" class="form-select"><option value="">None / Not Applicable</option><option>TNEA</option><option>TANCET</option><option>GATE</option><option>Other</option></select>
+                <select id="adm-entrance" class="form-select"><option value="">None / Not Applicable</option><option>TNEA</option><option>TANCET</option><option>GATE</option><option>JEE Main</option><option>Other</option></select>
               </div>
               <div class="form-group"><label class="form-label"><i class="fas fa-trophy"></i> Entrance Score / Rank</label><input type="text" id="adm-entranceScore" class="form-input" placeholder="e.g. 1234 / 98.5 percentile" /></div>
-              <div class="form-group"><label class="form-label"><i class="fas fa-ticket-alt"></i> Quota</label>
-                <select id="adm-quota" class="form-select"><option value="">Select Quota</option><option>Government (TNEA)</option><option>Management</option></select>
-              </div>
-              <div class="form-group"><label class="form-label"><i class="fas fa-running"></i> Extra Curricular</label><input type="text" id="adm-extra" class="form-input" placeholder="Sports, NCC, NSS etc." /></div>
+              <div class="form-group"><label class="form-label"><i class="fas fa-running"></i> Extra Curricular Activities</label><input type="text" id="adm-extra" class="form-input" placeholder="Sports, NCC, NSS, Cultural etc." /></div>
               <div class="form-group adm-check-group">
-                <label><input type="checkbox" id="adm-sports" /> &nbsp;Sports Achievement</label>
+                <label><input type="checkbox" id="adm-sports" /> &nbsp;Sports Achievement (Quota)</label>
                 <label><input type="checkbox" id="adm-ncc" /> &nbsp;NCC Certificate</label>
               </div>
             </div>
@@ -253,7 +309,7 @@
             </div>
           </div>
 
-          <!-- STEP 4: Review & Submit -->
+          <!-- ══ STEP 4: Review & Submit ══ -->
           <div class="adm-panel" id="adm-panel-4" style="display:none;">
             <h3 class="adm-panel-title"><i class="fas fa-check-double"></i> Review &amp; Submit</h3>
             <div id="adm-review-content" class="adm-review"></div>

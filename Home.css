@@ -828,3 +828,170 @@
 .quicklinks-grid .qlink-card:nth-child(2) { transition-delay: 0.12s; }
 .quicklinks-grid .qlink-card:nth-child(3) { transition-delay: 0.19s; }
 .quicklinks-grid .qlink-card:nth-child(4) { transition-delay: 0.26s; }
+/* ================================================
+   HOME PAGE CSS — ADDITIONS
+   (Recruiter text logos, gallery video, quicklinks)
+   ================================================ */
+
+/* ── RECRUITER TEXT LOGO FALLBACK ── */
+.recruiter-text-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  font-family: 'Poppins', sans-serif;
+  font-size: clamp(0.75rem, 1.2vw, 0.88rem);
+  font-weight: 800;
+  color: rgba(255,255,255,0.85);
+  letter-spacing: 0.04em;
+  border: 1.5px solid rgba(255,255,255,0.2);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(6px);
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  white-space: nowrap;
+}
+
+.recruiter-text-logo:hover {
+  background: rgba(255,255,255,0.18);
+  color: white;
+  transform: scale(1.1) translateY(-3px);
+  border-color: rgba(255,255,255,0.4);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+}
+
+/* Fix recruiters grid to handle mixed img + text logos */
+.recruiters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 16px;
+  align-items: center;
+}
+
+.recruiters-grid img {
+  height: 40px;
+  width: 100%;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+  opacity: 0.85;
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.recruiters-grid img:hover {
+  opacity: 1;
+  transform: scale(1.18) translateY(-4px);
+  filter: brightness(0) invert(1);
+}
+
+/* ── GALLERY — VIDEO SUPPORT ── */
+.gallery-item {
+  position: relative;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  aspect-ratio: 4/3;
+  transition: all 0.4s cubic-bezier(0.34, 1.2, 0.64, 1);
+  cursor: pointer;
+}
+
+.gallery-item:hover {
+  transform: scale(1.04);
+  box-shadow: var(--shadow-lg);
+  z-index: 1;
+  position: relative;
+}
+
+.gallery-item video,
+.gallery-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.6s ease;
+  display: block;
+}
+
+.gallery-item:hover video,
+.gallery-item:hover img {
+  transform: scale(1.08);
+}
+
+.gallery-video-badge {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,0.2);
+  transition: transform 0.3s ease;
+  z-index: 2;
+}
+
+.gallery-item:hover .gallery-video-badge {
+  transform: scale(1.15);
+}
+
+/* ── GALLERY SKELETON LOADING ── */
+.skeleton-gallery {
+  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+  background-size: 200% 100%;
+  animation: skeletonPulse 1.4s ease-in-out infinite;
+  border-radius: var(--radius-md);
+  aspect-ratio: 4/3;
+}
+
+/* ── QUICKLINKS — 6 CARDS ── */
+.quicklinks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+}
+
+.qlink-card:nth-child(5) { border-top-color: #E91E63; }
+.qlink-card:nth-child(6) { border-top-color: #009688; }
+
+/* stagger delays for extra cards */
+.quicklinks-grid .qlink-card:nth-child(5) { transition-delay: 0.33s; }
+.quicklinks-grid .qlink-card:nth-child(6) { transition-delay: 0.40s; }
+
+/* ── GALLERY STAGGER ANIMATIONS (extended) ── */
+.gallery-grid .gallery-item:nth-child(1)  { transition-delay: 0.05s; }
+.gallery-grid .gallery-item:nth-child(2)  { transition-delay: 0.10s; }
+.gallery-grid .gallery-item:nth-child(3)  { transition-delay: 0.15s; }
+.gallery-grid .gallery-item:nth-child(4)  { transition-delay: 0.20s; }
+.gallery-grid .gallery-item:nth-child(5)  { transition-delay: 0.25s; }
+.gallery-grid .gallery-item:nth-child(6)  { transition-delay: 0.30s; }
+.gallery-grid .gallery-item:nth-child(7)  { transition-delay: 0.35s; }
+.gallery-grid .gallery-item:nth-child(8)  { transition-delay: 0.40s; }
+.gallery-grid .gallery-item:nth-child(9)  { transition-delay: 0.45s; }
+.gallery-grid .gallery-item:nth-child(10) { transition-delay: 0.50s; }
+.gallery-grid .gallery-item:nth-child(11) { transition-delay: 0.55s; }
+.gallery-grid .gallery-item:nth-child(12) { transition-delay: 0.60s; }
+
+/* ── ADMISSION FORM — CUTOFF DISPLAY ── */
+.adm-cutoff-box {
+  padding: 12px 16px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+  font-weight: 700;
+  color: var(--primary);
+  min-width: 120px;
+  text-align: center;
+  font-size: 1.1rem;
+  transition: all 0.3s ease;
+}
+
+.adm-cutoff-box.has-value {
+  border-color: var(--accent);
+  background: rgba(76,175,80,0.06);
+  color: var(--accent-dark);
+}
