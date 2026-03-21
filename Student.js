@@ -1,5 +1,10 @@
 import { supabase } from './supabaseClient.js'
-import { initStickyHeader, initHamburger, initScrollAnimations, showToast, initAuth, openAuthModal, logoutUser, getCurrentUser, getUserProfile, onAuthChange, initRipple, initPageTransitions } from './shared.js'
+import {
+  initStickyHeader, initHamburger, initScrollAnimations,
+  showToast, initAuth, openAuthModal, logoutUser,
+  getCurrentUser, getUserProfile, onAuthChange,
+  initRipple, initPageTransitions
+} from './shared.js'
 
 const STORAGE_BUCKET = 'image_files'
 const STORAGE_FOLDER = 'Student_images'
@@ -15,10 +20,7 @@ const DEPT_OPTIONS = [
   'Master of Business Administration',
   'M.Tech Computer Science & Engineering',
   'M.Tech VLSI Design',
-  'Mathematics',
-  'Physics',
-  'Chemistry',
-  'English'
+  'Mathematics', 'Physics', 'Chemistry', 'English'
 ]
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -47,14 +49,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   await handleAuthState(user, profile)
 })
 
+// ── AUTH STATE ────────────────────────────────────────────────
 async function handleAuthState(user, profile) {
   if (!user) { showSection('notLoggedIn'); return }
 
   const regno = profile?.regno
   if (!regno) {
     showSection('noData')
-    document.getElementById('noDataMsg').textContent = 'Your account does not have a register number. Please contact administration.'
-    document.getElementById('noDataUserInfo').innerHTML = `<p><i class="fas fa-envelope"></i> Logged in as: <strong>${user.email}</strong></p>`
+    document.getElementById('noDataMsg').textContent =
+      'Your account does not have a register number linked. Please contact administration.'
+    document.getElementById('noDataUserInfo').innerHTML =
+      `<p><i class="fas fa-envelope"></i> Logged in as: <strong>${user.email}</strong></p>`
     return
   }
 
@@ -66,7 +71,11 @@ async function handleAuthState(user, profile) {
     .ilike('register_no', regno)
     .maybeSingle()
 
-  if (error) { showToast('Error fetching records: ' + error.message, 'error'); showSection('noData'); return }
+  if (error) {
+    showToast('Error fetching records: ' + error.message, 'error')
+    showSection('noData')
+    return
+  }
 
   if (!student) {
     showSection('setupProfile')
@@ -75,10 +84,11 @@ async function handleAuthState(user, profile) {
   }
 
   showSection('profile')
-  renderProfile(student, profile)
+  await renderProfile(student, profile)
   setupStudentRealtime(regno)
 }
 
+// ── SECTION SWITCHER ──────────────────────────────────────────
 function showSection(which) {
   const sections = ['notLoggedIn', 'loading', 'noData', 'profile', 'setupProfile']
   sections.forEach(s => {
@@ -101,7 +111,7 @@ function buildImageInputHTML(idPrefix) {
     <div class="file-upload-area" id="${idPrefix}_upload_area">
       <input type="file" id="${idPrefix}_file" accept="image/*" />
       <span class="file-upload-icon"><i class="fas fa-cloud-upload-alt"></i></span>
-      <div class="file-upload-text"><strong>Click or drag & drop</strong><br>JPG, PNG, GIF — max 5MB</div>
+      <div class="file-upload-text"><strong>Click or drag &amp; drop</strong><br>JPG, PNG, GIF — max 5MB</div>
     </div>
     <div class="img-preview-wrap" id="${idPrefix}_preview">
       <img id="${idPrefix}_preview_img" src="" alt="Preview" />
@@ -144,27 +154,26 @@ function initImageInputTabs(idPrefix) {
 }
 
 async function resolveImageUrl(idPrefix, userId) {
-  // Check if file tab is active and has file
   const fileInput = document.getElementById(`${idPrefix}_file`)
   if (fileInput?.files[0]) {
     const file = fileInput.files[0]
     const ext = file.name.split('.').pop()
     const path = `${STORAGE_FOLDER}/${userId || Date.now()}.${ext}`
-    const { data, error } = await supabase.storage.from(STORAGE_BUCKET).upload(path, file, { upsert: true })
+    const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(path, file, { upsert: true })
     if (error) { showToast('Image upload failed: ' + error.message, 'error'); return null }
     const { data: { publicUrl } } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path)
     return publicUrl
   }
-  // Fall back to URL field
   const urlInput = document.getElementById(`${idPrefix}_url`)
   return urlInput?.value.trim() || null
 }
 
-// ── SETUP PROFILE FORM ───────────────────────────────────────
+// ── SETUP PROFILE FORM ────────────────────────────────────────
 function renderSetupForm(user, authProfile) {
   const container = document.getElementById('setupProfileSection')
-
-  const deptOptions = DEPT_OPTIONS.map(d => `<option value="${d}" ${authProfile?.department === d ? 'selected' : ''}>${d}</option>`).join('')
+  const deptOptions = DEPT_OPTIONS.map(d =>
+    `<option value="${d}" ${authProfile?.department === d ? 'selected' : ''}>${d}</option>`
+  ).join('')
 
   container.innerHTML = `
     <div class="setup-profile-wrap animate-fade-up">
@@ -275,7 +284,7 @@ function renderSetupForm(user, authProfile) {
       return
     }
 
-    const imageUrl = await resolveImageUrl('sp_img', user.id)
+    const imageUrl = await resolveImageUrl('sp_img', user?.id)
 
     const payload = {
       register_no: regno, name, gender, department: dept,
@@ -285,7 +294,9 @@ function renderSetupForm(user, authProfile) {
       image_url: imageUrl || null
     }
 
-    const { error } = await supabase.from('student_information').upsert(payload, { onConflict: 'register_no' })
+    const { error } = await supabase
+      .from('student_information')
+      .upsert(payload, { onConflict: 'register_no' })
 
     if (error) {
       showToast('Failed to save: ' + error.message, 'error')
@@ -295,86 +306,28 @@ function renderSetupForm(user, authProfile) {
     }
 
     showToast('Profile saved successfully! 🎉', 'success')
-    const { data: student } = await supabase.from('student_information').select('*').ilike('register_no', regno).maybeSingle()
-    if (student) { showSection('profile'); renderProfile(student, authProfile); setupStudentRealtime(regno) }
+    const { data: student } = await supabase
+      .from('student_information')
+      .select('*')
+      .ilike('register_no', regno)
+      .maybeSingle()
+
+    if (student) {
+      showSection('profile')
+      await renderProfile(student, authProfile)
+      setupStudentRealtime(regno)
+    }
   })
 
   setTimeout(() => initScrollAnimations(), 50)
 }
 
-// ── RENDER PROFILE ────────────────────────────────────────────
-function renderProfile(student, authProfile) {
-  const attPct   = student.attendance_percentage || 0
-  const attColor = attPct >= 75 ? '#4CAF50' : '#f44336'
+// ── RENDER PROFILE (main) ─────────────────────────────────────
+async function renderProfile(student, authProfile) {
   const yearSuffix = ['st','nd','rd','th'][Math.min((student.year || 1) - 1, 3)]
-
-  // Group exams by category
-  const exams = Array.isArray(student.exam_details) ? student.exam_details : []
-  const categories = ['CIAT1','CIAT2','SEM1','SEM2']
-  const categoryLabels = { CIAT1:'CIAT - 1', CIAT2:'CIAT - 2', SEM1:'Semester I', SEM2:'Semester II' }
-  const categoryIcons  = { CIAT1:'fas fa-flask', CIAT2:'fas fa-vial', SEM1:'fas fa-graduation-cap', SEM2:'fas fa-award' }
-  const categoryColors = { CIAT1:'#2196F3', CIAT2:'#9C27B0', SEM1:'#FF9800', SEM2:'#4CAF50' }
-
-  let examsHtml = ''
-  if (exams.length > 0) {
-    examsHtml = `<div class="exams-section">`
-    categories.forEach(cat => {
-      const catExams = exams.filter(e => e.exam_category === cat)
-      if (!catExams.length) return
-      const passCount = catExams.filter(e => e.result === 'Pass').length
-      const avg = Math.round(catExams.reduce((s, e) => s + (e.marks || 0), 0) / catExams.length)
-      examsHtml += `
-        <div class="exam-category-block" style="--cat-color:${categoryColors[cat]}">
-          <div class="exam-cat-header">
-            <span class="exam-cat-icon"><i class="${categoryIcons[cat]}"></i></span>
-            <span class="exam-cat-label">${categoryLabels[cat]}</span>
-            <span class="exam-cat-stats">${passCount}/${catExams.length} Pass &bull; Avg: ${avg}</span>
-          </div>
-          <div class="exams-grid">
-            ${catExams.map(ex => `
-              <div class="exam-result-card ${ex.result === 'Pass' ? 'exam-pass' : 'exam-fail'}">
-                <div class="exam-subj">${ex.subject}</div>
-                <div class="exam-score">
-                  <span class="exam-marks">${ex.marks}${ex.max_marks ? '/' + ex.max_marks : '/100'}</span>
-                  <span class="exam-result-badge ${ex.result === 'Pass' ? 'pass' : 'fail'}">${ex.result}</span>
-                  ${ex.type ? `<span class="exam-type">${ex.type}</span>` : ''}
-                </div>
-              </div>`).join('')}
-          </div>
-        </div>`
-    })
-    examsHtml += `</div>`
-  } else {
-    examsHtml = `
-      <div class="pending-notice">
-        <div class="pending-icon"><i class="fas fa-hourglass-half"></i></div>
-        <h4>Exam Results Pending</h4>
-        <p>Your exam results haven't been entered yet. Please check back after the admin updates your records.</p>
-      </div>`
-  }
-
-  const attendanceHtml = (student.total_days || student.present_days)
-    ? `<div class="attendance-card">
-        <h3><i class="fas fa-calendar-check"></i> Attendance Record</h3>
-        <div class="attendance-stats">
-          <div class="att-stat"><span class="att-num" style="color:${attColor};">${attPct}%</span><span class="att-label">Attendance %</span></div>
-          <div class="att-stat"><span class="att-num">${student.present_days || 0}</span><span class="att-label">Days Present</span></div>
-          <div class="att-stat"><span class="att-num">${student.absent_days || 0}</span><span class="att-label">Days Absent</span></div>
-          <div class="att-stat"><span class="att-num">${student.total_days || 0}</span><span class="att-label">Total Days</span></div>
-        </div>
-        ${attPct > 0 && attPct < 75 ? `<div class="att-warning att-warn-red">⚠️ Attendance below 75% — condonation required</div>`
-          : attPct >= 75 ? `<div class="att-warning att-warn-green">✅ Good attendance — eligible for examinations</div>` : ''}
-      </div>`
-    : `<div class="pending-notice">
-        <div class="pending-icon"><i class="fas fa-calendar-times"></i></div>
-        <h4>Attendance Pending</h4>
-        <p>Your attendance records haven't been entered yet.</p>
-      </div>`
-
-  const photoSrc = student.image_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(student.name)}&background=1a237e&color=fff&size=130`
-
-  // Gender icon
-  const genderIcon = { Male: 'fas fa-mars', Female: 'fas fa-venus', Other: 'fas fa-transgender' }[student.gender] || 'fas fa-user'
+  const photoSrc   = student.image_url
+    || `https://ui-avatars.com/api/?name=${encodeURIComponent(student.name)}&background=1a237e&color=fff&size=130`
+  const genderIcon = { Male:'fas fa-mars', Female:'fas fa-venus', Other:'fas fa-transgender' }[student.gender] || 'fas fa-user'
 
   document.getElementById('profileContent').innerHTML = `
     <div class="profile-card">
@@ -391,21 +344,259 @@ function renderProfile(student, authProfile) {
       <div class="profile-body">
         <div class="profile-info-grid">
           ${student.department ? `<div class="profile-info-item"><div class="profile-info-label"><i class="fas fa-book"></i> Department</div><div class="profile-info-value">${student.department}</div></div>` : ''}
-          ${student.year ? `<div class="profile-info-item"><div class="profile-info-label"><i class="fas fa-layer-group"></i> Year</div><div class="profile-info-value">${student.year}${yearSuffix} Year</div></div>` : ''}
-          ${student.gender ? `<div class="profile-info-item"><div class="profile-info-label"><i class="fas fa-venus-mars"></i> Gender</div><div class="profile-info-value">${student.gender}</div></div>` : ''}
+          ${student.year      ? `<div class="profile-info-item"><div class="profile-info-label"><i class="fas fa-layer-group"></i> Year</div><div class="profile-info-value">${student.year}${yearSuffix} Year</div></div>` : ''}
+          ${student.gender    ? `<div class="profile-info-item"><div class="profile-info-label"><i class="fas fa-venus-mars"></i> Gender</div><div class="profile-info-value">${student.gender}</div></div>` : ''}
           ${student.guardian_name ? `<div class="profile-info-item"><div class="profile-info-label"><i class="fas fa-shield-alt"></i> Guardian</div><div class="profile-info-value">${student.guardian_name}</div></div>` : ''}
-          ${student.phone ? `<div class="profile-info-item"><div class="profile-info-label"><i class="fas fa-phone"></i> Phone</div><div class="profile-info-value">${student.phone}</div></div>` : ''}
-          ${student.email ? `<div class="profile-info-item"><div class="profile-info-label"><i class="fas fa-envelope"></i> Email</div><div class="profile-info-value">${student.email}</div></div>` : ''}
-          ${student.dob ? `<div class="profile-info-item"><div class="profile-info-label"><i class="fas fa-birthday-cake"></i> Date of Birth</div><div class="profile-info-value">${student.dob}</div></div>` : ''}
-          ${student.linkedin ? `<div class="profile-info-item"><div class="profile-info-label"><i class="fab fa-linkedin"></i> LinkedIn</div><div class="profile-info-value"><a href="${student.linkedin}" target="_blank"><i class="fas fa-external-link-alt"></i> View Profile</a></div></div>` : ''}
-          ${student.github ? `<div class="profile-info-item"><div class="profile-info-label"><i class="fab fa-github"></i> GitHub</div><div class="profile-info-value"><a href="${student.github}" target="_blank"><i class="fas fa-external-link-alt"></i> View Profile</a></div></div>` : ''}
+          ${student.phone     ? `<div class="profile-info-item"><div class="profile-info-label"><i class="fas fa-phone"></i> Phone</div><div class="profile-info-value">${student.phone}</div></div>` : ''}
+          ${student.email     ? `<div class="profile-info-item"><div class="profile-info-label"><i class="fas fa-envelope"></i> Email</div><div class="profile-info-value">${student.email}</div></div>` : ''}
+          ${student.dob       ? `<div class="profile-info-item"><div class="profile-info-label"><i class="fas fa-birthday-cake"></i> Date of Birth</div><div class="profile-info-value">${student.dob}</div></div>` : ''}
+          ${student.linkedin  ? `<div class="profile-info-item"><div class="profile-info-label"><i class="fab fa-linkedin"></i> LinkedIn</div><div class="profile-info-value"><a href="${student.linkedin}" target="_blank"><i class="fas fa-external-link-alt"></i> View Profile</a></div></div>` : ''}
+          ${student.github    ? `<div class="profile-info-item"><div class="profile-info-label"><i class="fab fa-github"></i> GitHub</div><div class="profile-info-value"><a href="${student.github}" target="_blank"><i class="fas fa-external-link-alt"></i> View Profile</a></div></div>` : ''}
         </div>
-        ${attendanceHtml}
-        ${examsHtml}
+
+        <!-- Attendance Section -->
+        <div id="attendanceSection"></div>
+
+        <!-- Exam Section -->
+        <div id="examSection"></div>
       </div>
     </div>`
 
   initScrollAnimations()
+
+  // Load attendance and exams in parallel
+  await Promise.all([
+    loadAttendance(student.register_no),
+    loadExamDetails(student.register_no)
+  ])
+}
+
+// ── ATTENDANCE ────────────────────────────────────────────────
+async function loadAttendance(registerNo) {
+  const container = document.getElementById('attendanceSection')
+  if (!container) return
+
+  const { data, error } = await supabase
+    .from('attendance_information')
+    .select('*')
+    .ilike('register_no', registerNo)
+    .maybeSingle()
+
+  if (error || !data || (!data.total_days && !data.present_days)) {
+    container.innerHTML = `
+      <div class="pending-notice">
+        <div class="pending-icon"><i class="fas fa-calendar-times"></i></div>
+        <h4>Attendance Not Updated Yet</h4>
+        <p>Please wait while the admin updates your attendance records.</p>
+      </div>`
+    return
+  }
+
+  // Calculate everything from total_days and present_days
+  const totalDays   = parseInt(data.total_days)   || 0
+  const presentDays = parseInt(data.present_days) || 0
+  const absentDays  = Math.max(0, totalDays - presentDays)
+  const percentage  = totalDays > 0
+    ? ((presentDays / totalDays) * 100).toFixed(2)
+    : '0.00'
+  const pct = parseFloat(percentage)
+
+  // How many more days needed to reach 75%
+  let warningMsg = ''
+  if (pct < 75 && totalDays > 0) {
+    const daysNeeded = Math.ceil((0.75 * totalDays - presentDays) / 0.25)
+    warningMsg = `⚠️ Low attendance! You need to attend <strong>${Math.max(0, daysNeeded)}</strong> more consecutive classes to reach 75%.`
+  } else if (pct >= 75) {
+    warningMsg = `✅ Good standing! Your attendance meets the required 75% criteria.`
+  }
+
+  const pctColor = pct >= 75 ? '#4CAF50' : pct >= 65 ? '#FF9800' : '#f44336'
+  const barWidth = Math.min(100, pct)
+
+  container.innerHTML = `
+    <div class="attendance-card">
+      <h3><i class="fas fa-calendar-check"></i> Attendance Record</h3>
+      <div class="attendance-pct-wrap">
+        <div class="attendance-pct-circle" style="--pct-color:${pctColor};">
+          <svg viewBox="0 0 120 120" class="att-svg">
+            <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(0,0,0,0.07)" stroke-width="10"/>
+            <circle cx="60" cy="60" r="50" fill="none" stroke="${pctColor}"
+              stroke-width="10" stroke-linecap="round"
+              stroke-dasharray="${2 * Math.PI * 50}"
+              stroke-dashoffset="${2 * Math.PI * 50 * (1 - barWidth / 100)}"
+              style="transition:stroke-dashoffset 1s ease;transform:rotate(-90deg);transform-origin:center;"/>
+          </svg>
+          <div class="att-pct-inner">
+            <span class="att-pct-num">${percentage}%</span>
+            <span class="att-pct-lbl">Attendance</span>
+          </div>
+        </div>
+        <div class="attendance-stats">
+          <div class="att-stat">
+            <div class="att-stat-icon" style="background:linear-gradient(135deg,#4CAF50,#388E3C);">
+              <i class="fas fa-check"></i>
+            </div>
+            <span class="att-num">${presentDays}</span>
+            <span class="att-label">Days Present</span>
+          </div>
+          <div class="att-stat">
+            <div class="att-stat-icon" style="background:linear-gradient(135deg,#f44336,#c62828);">
+              <i class="fas fa-times"></i>
+            </div>
+            <span class="att-num">${absentDays}</span>
+            <span class="att-label">Days Absent</span>
+          </div>
+          <div class="att-stat">
+            <div class="att-stat-icon" style="background:linear-gradient(135deg,#2196F3,#1565C0);">
+              <i class="fas fa-calendar-alt"></i>
+            </div>
+            <span class="att-num">${totalDays}</span>
+            <span class="att-label">Total Days</span>
+          </div>
+        </div>
+      </div>
+      ${warningMsg ? `<div class="att-warning-bar ${pct >= 75 ? 'att-warn-green' : 'att-warn-red'}">${warningMsg}</div>` : ''}
+    </div>`
+}
+
+// ── EXAM DETAILS ──────────────────────────────────────────────
+async function loadExamDetails(registerNo) {
+  const container = document.getElementById('examSection')
+  if (!container) return
+
+  const { data, error } = await supabase
+    .from('exam_information')
+    .select('*')
+    .ilike('register_no', registerNo)
+    .order('semester', { ascending: true })
+    .order('exam_type',  { ascending: true })
+    .order('subject_name', { ascending: true })
+
+  if (error || !data || data.length === 0) {
+    container.innerHTML = `
+      <div class="pending-notice">
+        <div class="pending-icon"><i class="fas fa-hourglass-half"></i></div>
+        <h4>Exam Details Not Available Yet</h4>
+        <p>Please wait till the admin enters your exam details. Check back after your examinations.</p>
+      </div>`
+    return
+  }
+
+  // Group: semester → exam_type → subjects
+  const grouped = {}
+  data.forEach(row => {
+    const sem = row.semester
+    const typ = row.exam_type
+    if (!grouped[sem]) grouped[sem] = {}
+    if (!grouped[sem][typ]) grouped[sem][typ] = []
+    grouped[sem][typ].push(row)
+  })
+
+  const semNums     = Object.keys(grouped).map(Number).sort((a,b) => a-b)
+  const examTypes   = ['CIAT1','CIAT2','Final Exam']
+  const examLabels  = { 'CIAT1': 'CIAT - 1', 'CIAT2': 'CIAT - 2', 'Final Exam': 'Final Examination' }
+  const examIcons   = { 'CIAT1':'fas fa-pencil-alt', 'CIAT2':'fas fa-pen-nib', 'Final Exam':'fas fa-graduation-cap' }
+  const examColors  = { 'CIAT1':'#2196F3', 'CIAT2':'#9C27B0', 'Final Exam':'#f44336' }
+
+  container.innerHTML = `
+    <div class="exam-container">
+      <h3 class="exam-main-title"><i class="fas fa-file-alt"></i> Exam Results</h3>
+
+      <!-- Semester Tabs -->
+      <div class="exam-sem-tabs" id="examSemTabs">
+        ${semNums.map((s, i) => `
+          <button
+            class="exam-sem-tab ${i === 0 ? 'active' : ''}"
+            data-sem="${s}"
+            onclick="switchExamSem(${s})">
+            Sem ${s}
+          </button>`).join('')}
+      </div>
+
+      <!-- Semester Panels -->
+      ${semNums.map((sem, i) => `
+        <div class="exam-sem-panel ${i === 0 ? '' : 'hidden'}" id="sempanel-${sem}">
+          ${examTypes.map(typ => {
+            const subjects = grouped[sem]?.[typ]
+            if (!subjects || subjects.length === 0) return ''
+
+            const total    = subjects.reduce((s,r) => s + (parseFloat(r.marks_obtained) || 0), 0)
+            const maxTotal = subjects.reduce((s,r) => s + (parseFloat(r.max_marks) || 100), 0)
+            const avg      = subjects.length ? (total / subjects.length).toFixed(1) : '0'
+            const passCount = subjects.filter(r => {
+              const pct = r.max_marks > 0 ? (r.marks_obtained / r.max_marks * 100) : 0
+              return typ === 'Final Exam' ? pct >= 50 : pct >= 40
+            }).length
+
+            return `
+              <div class="exam-type-block" style="--et-color:${examColors[typ]};">
+                <div class="exam-type-header">
+                  <div class="exam-type-icon"><i class="${examIcons[typ]}"></i></div>
+                  <div class="exam-type-info">
+                    <span class="exam-type-name">${examLabels[typ]}</span>
+                    <span class="exam-type-stats">${passCount}/${subjects.length} Pass &nbsp;|&nbsp; Avg: ${avg}/${(maxTotal/subjects.length).toFixed(0)}</span>
+                  </div>
+                </div>
+                <div class="exam-subjects-table-wrap">
+                  <table class="exam-table">
+                    <thead>
+                      <tr>
+                        <th>Subject</th>
+                        <th>Code</th>
+                        <th>Marks</th>
+                        <th>Max</th>
+                        <th>%</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${subjects.map(sub => {
+                        const maxM   = parseFloat(sub.max_marks)  || 100
+                        const obtM   = parseFloat(sub.marks_obtained)
+                        const pctVal = maxM > 0 ? ((obtM / maxM) * 100).toFixed(1) : '—'
+                        const pass   = typ === 'Final Exam'
+                          ? (obtM / maxM * 100) >= 50
+                          : (obtM / maxM * 100) >= 40
+                        return `
+                          <tr>
+                            <td class="subj-name">${sub.subject_name}</td>
+                            <td><code class="subj-code">${sub.subject_code || '—'}</code></td>
+                            <td><strong>${obtM ?? '—'}</strong></td>
+                            <td>${maxM}</td>
+                            <td>${pctVal}%</td>
+                            <td>
+                              <span class="exam-status-chip ${pass ? 'pass' : 'fail'}">
+                                <i class="fas fa-${pass ? 'check' : 'times'}"></i>
+                                ${pass ? 'Pass' : 'Fail'}
+                              </span>
+                            </td>
+                          </tr>`
+                      }).join('')}
+                    </tbody>
+                    <tfoot>
+                      <tr class="exam-tfoot">
+                        <td colspan="2"><strong>Total</strong></td>
+                        <td><strong>${total.toFixed(1)}</strong></td>
+                        <td>${maxTotal.toFixed(0)}</td>
+                        <td><strong>${maxTotal > 0 ? (total/maxTotal*100).toFixed(1) : '—'}%</strong></td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>`
+          }).join('')}
+        </div>`).join('')}
+    </div>`
+
+  // Expose globally for onclick
+  window.switchExamSem = function(semNum) {
+    document.querySelectorAll('.exam-sem-tab').forEach(t => {
+      t.classList.toggle('active', parseInt(t.dataset.sem) === semNum)
+    })
+    document.querySelectorAll('.exam-sem-panel').forEach(p => p.classList.add('hidden'))
+    document.getElementById(`sempanel-${semNum}`)?.classList.remove('hidden')
+  }
 }
 
 // ── REALTIME SYNC ─────────────────────────────────────────────
@@ -414,10 +605,21 @@ function setupStudentRealtime(regno) {
   if (_realtimeChannel) supabase.removeChannel(_realtimeChannel)
   _realtimeChannel = supabase
     .channel('student-realtime-' + regno)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'student_information', filter: `register_no=ilike.${regno}` },
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'student_information' },
       async () => {
-        const { data: student } = await supabase.from('student_information').select('*').ilike('register_no', regno).maybeSingle()
-        if (student) { showSection('profile'); renderProfile(student, getUserProfile()) }
+        const { data: student } = await supabase
+          .from('student_information')
+          .select('*')
+          .ilike('register_no', regno)
+          .maybeSingle()
+        if (student) { showSection('profile'); await renderProfile(student, getUserProfile()) }
       })
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'attendance_information' },
+      async () => { await loadAttendance(regno) })
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'exam_information' },
+      async () => { await loadExamDetails(regno) })
     .subscribe()
 }
