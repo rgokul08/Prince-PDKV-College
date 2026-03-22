@@ -708,14 +708,29 @@ window.openEditRoom=id=>{
   modal(`
   <div class="tc-mo open" id="mEdit">
    <div class="tc-mb tc-mb-lg">
-    <div class="tc-mh"><div class="tc-mt"><i class="fas fa-edit"></i> Edit Students — ${esc(room.class_name)}</div><button class="tc-mc" onclick="closeM('mEdit');openRoom('${id}')"><i class="fas fa-times"></i></button></div>
+    <div class="tc-mh"><div class="tc-mt"><i class="fas fa-edit"></i> Edit Classroom — ${esc(room.class_name)}</div><button class="tc-mc" onclick="closeM('mEdit');openRoom('${id}')"><i class="fas fa-times"></i></button></div>
     <div class="tc-mbd">
+      <!-- Edit name, subject, dept, year -->
+      <div class="tgrid" style="margin-bottom:18px">
+        <div class="tg-fg"><label class="tl"><i class="fas fa-door-open"></i> Classroom Name *</label>
+          <input id="ec_name" class="ti" value="${esc(room.class_name)}" placeholder="e.g. CSE-A 3rd Year Maths"/></div>
+        <div class="tg-fg"><label class="tl"><i class="fas fa-book"></i> Subject *</label>
+          <input id="ec_subj" class="ti" value="${esc(room.subject||'')}" placeholder="e.g. Data Structures"/></div>
+        <div class="tg-fg"><label class="tl"><i class="fas fa-building"></i> Department (optional)</label>
+          <input id="ec_dept" class="ti" value="${esc(room.department||'')}" placeholder="e.g. CSE"/></div>
+        <div class="tg-fg"><label class="tl"><i class="fas fa-layer-group"></i> Year (optional)</label>
+          <select id="ec_year" class="ts">
+            <option value="">Any Year</option>
+            ${[1,2,3,4].map(n=>`<option value="${n}" ${room.year==n?'selected':''}>${n}${sfx(n)} Year</option>`).join('')}
+          </select></div>
+      </div>
+      <!-- Edit students -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;flex-wrap:wrap;gap:8px">
-        <span style="font-family:'Fraunces',serif;font-size:.95rem;color:#fff"><i class="fas fa-users" style="color:var(--tamb);margin-right:7px"></i>Select Students</span>
+        <span style="font-size:.95rem;color:#fff;font-weight:700"><i class="fas fa-users" style="color:var(--tamb);margin-right:7px"></i>Edit Students</span>
         <span class="tbd tb-teal" id="selCnt">${_selStu.size} Selected</span>
       </div>
-      <div class="tc-msearch tg-fg"><i class="fas fa-search tc-msearch-ico"></i><input id="stuSearch" class="ti" placeholder="Search…" oninput="fltStus()" style="padding-left:37px"/></div>
-      <div style="max-height:370px;overflow-y:auto" id="stuList">${stuSelHTML(grpStus(_stus))}</div>
+      <div class="tc-msearch tg-fg"><i class="fas fa-search tc-msearch-ico"></i><input id="stuSearch" class="ti" placeholder="Search name or reg no…" oninput="fltStus()" style="padding-left:37px"/></div>
+      <div style="max-height:340px;overflow-y:auto;padding-right:3px" id="stuList">${stuSelHTML(grpStus(_stus))}</div>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;padding-top:15px;border-top:1px solid var(--tbord)">
         <button class="tb tb-ghost tb-sm" onclick="closeM('mEdit');openRoom('${id}')">Cancel</button>
         <button class="tb tb-pri" onclick="saveEditRoom('${id}')"><i class="fas fa-save"></i> Save Changes</button>
@@ -726,10 +741,37 @@ window.openEditRoom=id=>{
 }
 
 window.saveEditRoom=async id=>{
-  const {error}=await supabase.from('classrooms').update({student_regnos:[..._selStu],updated_at:new Date().toISOString()}).eq('id',id)
+  const name=document.getElementById('ec_name')?.value?.trim()
+  const subj=document.getElementById('ec_subj')?.value?.trim()
+  if(!name||!subj){showToast('Classroom name & subject required.','warning');return}
+
+  const btn=document.querySelector('#mEdit .tb-pri')
+  if(btn){btn.disabled=true;btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Saving…'}
+
+  const {error}=await supabase.from('classrooms').update({
+    class_name:name, subject:subj,
+    department:document.getElementById('ec_dept')?.value?.trim()||null,
+    year:parseInt(document.getElementById('ec_year')?.value)||null,
+    student_regnos:[..._selStu],
+    updated_at:new Date().toISOString()
+  }).eq('id',id)
+
+  if(btn){btn.disabled=false;btn.innerHTML='<i class="fas fa-save"></i> Save Changes'}
   if(error){showToast('Failed: '+error.message,'error');return}
-  const idx=_rooms.findIndex(r=>r.id===id);if(idx>=0)_rooms[idx].student_regnos=[..._selStu]
-  showToast('Classroom updated!','success');closeM('mEdit');openRoom(id)
+
+  // Update local cache
+  const idx=_rooms.findIndex(r=>r.id===id)
+  if(idx>=0){
+    _rooms[idx].class_name=name
+    _rooms[idx].subject=subj
+    _rooms[idx].department=document.getElementById('ec_dept')?.value?.trim()||null
+    _rooms[idx].year=parseInt(document.getElementById('ec_year')?.value)||null
+    _rooms[idx].student_regnos=[..._selStu]
+  }
+  showToast('Classroom updated! ✅','success')
+  closeM('mEdit')
+  refreshGrids()
+  openRoom(id)
 }
 
 // ── HELPERS ───────────────────────────────────────────────────

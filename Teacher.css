@@ -316,9 +316,9 @@ body.tc-page::before {
 .tc-tabs{ display:flex; gap:6px; margin-bottom:26px; border-bottom:1px solid var(--tc-border); }
 .tc-tab{ padding:10px 22px; font-size:.86rem; font-weight:800; font-family:'Mulish',sans-serif; color:var(--tc-muted); background:none; border:none; cursor:pointer; border-bottom:3px solid transparent; margin-bottom:-1px; transition:all .3s ease; border-radius:8px 8px 0 0; }
 .tc-tab:hover{ color:var(--tc-amber); background:rgba(245,158,11,.06); }
-.tc-tab.act  { color:var(--tc-amber); border-bottom-color:var(--tc-amber); background:rgba(245,158,11,.06); }
+.tc-tab.act, .tc-tab.on { color:var(--tc-amber); border-bottom-color:var(--tc-amber); background:rgba(245,158,11,.06); }
 .tc-tpanel{ display:none; }
-.tc-tpanel.act{ display:block; }
+.tc-tpanel.act, .tc-tpanel.on { display:block; }
 
 /* Classroom grid */
 .tc-cls-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:16px; margin-bottom:22px; }
@@ -338,6 +338,13 @@ body.tc-page::before {
 .tc-create-btn span{ font-size:.93rem; font-weight:800; color:var(--tc-amber); }
 
 /* ─── MODAL (.tc-mb .tc-mh .tc-mbd .tc-mc .tc-mt) ───────────── */
+/* JS injects modals as <div class="tc-mo open"> wrapping <div class="tc-mb"> */
+.tc-mo {
+  display:none; position:fixed; inset:0;
+  background:rgba(0,0,0,.82); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  z-index:9900; align-items:center; justify-content:center; padding:18px;
+}
+.tc-mo.open { display:flex; }
 .tc-modal-ov{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.82); backdrop-filter:blur(10px); z-index:9900; align-items:center; justify-content:center; padding:18px; }
 .tc-modal-ov.open{ display:flex; }
 .tc-mb{
