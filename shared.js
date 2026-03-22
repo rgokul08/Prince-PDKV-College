@@ -473,6 +473,19 @@ export function initPageTransitions() {
     })
   })
 }
+// _____________vercel enable speed ensights___________________________
+
+// Initialize the global function
+window.si = window.si || function () {
+  (window.siq = window.siq || []).push(arguments);
+};
+
+// Dynamically load the Vercel script
+const script = document.createElement("script");
+script.src = "/_vercel/speed-insights/script.js";
+script.defer = true;
+
+document.head.appendChild(script);
 
 /* ── UTILS ───────────────────────────────────────────────────── */
 export function formatNumber(n) { return Number(n).toLocaleString('en-IN') }
