@@ -239,6 +239,7 @@ body.tc-page::before {
   padding: 14px;
   border: 2px solid rgba(245,158,11,.30);
   border-radius: 25px;
+  width: 100%;
 }
 
 .tb-pri:hover, .tc-btn-primary:hover {
