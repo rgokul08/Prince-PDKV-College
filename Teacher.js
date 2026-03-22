@@ -156,11 +156,31 @@ async function uploadImg(fileInputId, folder, key) {
   const f   = inp?.files?.[0]
   if (!f) return null
   const ext  = f.name.split('.').pop().toLowerCase()
-  const path = `${folder}/${key}_${Date.now()}.${ext}`
+  // Use register_no as the stable filename — same path every upload, always overrides old photo
+  const path = `${folder}/${key}.${ext}`
   const { error } = await supabase.storage.from(BUCKET).upload(path, f, { upsert: true, contentType: f.type })
   if (error) { showToast('Upload failed: ' + error.message, 'error'); return null }
+  // Add cache-busting param so browser shows the new image immediately
   const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(path)
-  return publicUrl
+  return publicUrl + '?t=' + Date.now()
+}
+
+// Try to find the teacher's photo in storage even if image_url is not saved in DB
+async function resolveTeacherPhoto(regno, savedUrl) {
+  if (savedUrl && savedUrl.startsWith('http')) return savedUrl
+
+  // Common extensions to try
+  for (const ext of ['jpg', 'jpeg', 'png', 'webp', 'gif']) {
+    const path = `${TCH_FOLD}/${regno}.${ext}`
+    const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(path)
+    // Check if file actually exists by doing a HEAD request
+    try {
+      const res = await fetch(publicUrl, { method: 'HEAD' })
+      if (res.ok) return publicUrl + '?t=' + Date.now()
+    } catch { /* continue */ }
+  }
+  // Fallback to initials avatar
+  return null
 }
 
 function bindPrev(fId, wId, iId, rmId) {
@@ -303,6 +323,7 @@ async function renderSetup(regno, existingData) {
 
     let imgUrl = d.image_url || null
     if (document.getElementById('f_img')?.files?.[0]) {
+      // key = regno so path = Teacher_images/TCH001.jpg — always consistent
       const newUrl = await uploadImg('f_img', TCH_FOLD, regno)
       if (newUrl) imgUrl = newUrl
     }
@@ -343,9 +364,18 @@ window.tcCancelEdit = () => {
 async function renderProfile(t) {
   const c = document.getElementById('secProfile'); if (!c) return
 
-  const photo = t.image_url && t.image_url.startsWith('http')
-    ? t.image_url
-    : `https://ui-avatars.com/api/?name=${encodeURIComponent(t.name || t.register_no)}&background=ff9f1c&color=060912&size=200&bold=true`
+  // Resolve photo: DB url → storage scan → initials avatar
+  const resolvedPhoto = await resolveTeacherPhoto(t.register_no, t.image_url)
+  const fallbackPhoto = `https://ui-avatars.com/api/?name=${encodeURIComponent(t.name || t.register_no)}&background=ff9f1c&color=060912&size=200&bold=true`
+  const photo = resolvedPhoto || fallbackPhoto
+
+  // If we found a photo in storage but DB doesn't have it saved, silently update DB
+  if (resolvedPhoto && resolvedPhoto !== t.image_url) {
+    supabase.from('teacher_information')
+      .update({ image_url: resolvedPhoto })
+      .ilike('register_no', t.register_no)
+      .then(() => {})
+  }
 
   const subjs = t.subjects ? t.subjects.split(',').map(s => s.trim()).filter(Boolean) : []
 
@@ -354,7 +384,7 @@ async function renderProfile(t) {
     <div class="tg tc-prof-hero tu">
       <div class="tc-av-wrap">
         <img src="${photo}" alt="${esc(t.name || t.register_no)}" class="tc-av"
-             onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(t.name || t.register_no)}&background=ff9f1c&color=060912&size=200&bold=true'" />
+             onerror="this.onerror=null;this.src='${fallbackPhoto}'" />
         <div class="tc-av-ring"></div>
       </div>
       <div class="tc-prof-info">
@@ -627,7 +657,8 @@ window.saveRoom = async () => {
 window.openRoom = async id => {
   const room = _rooms.find(r => r.id === id); if (!room) return
   const stus  = _stus.filter(s => (room.student_regnos || []).includes(s.register_no))
-  const isMine = room.teacher_regno === _regno
+  // Any logged-in teacher can mark attendance and edit any classroom
+  const isMine = true
 
   const { data: sessions = [] } = await supabase.from('attendance_sessions')
     .select('*').eq('classroom_id', id)
