@@ -2,6 +2,13 @@
 // shared.js — PDKV College v5 (fully debugged + enhanced)
 // ============================================================
 import { supabase } from './supabaseClient.js'
+import { injectSpeedInsights } from '@vercel/speed-insights'
+
+/* ── VERCEL SPEED INSIGHTS ──────────────────────────────────── */
+// Initialize Speed Insights for performance tracking
+injectSpeedInsights({
+  debug: false
+})
 
 /* ── TOAST ──────────────────────────────────────────────────── */
 export function showToast(message, type = 'success', duration = 4000) {
@@ -473,19 +480,6 @@ export function initPageTransitions() {
     })
   })
 }
-// _____________vercel enable speed ensights___________________________
-
-// Initialize the global function
-window.si = window.si || function () {
-  (window.siq = window.siq || []).push(arguments);
-};
-
-// Dynamically load the Vercel script
-const script = document.createElement("script");
-script.src = "/_vercel/speed-insights/script.js";
-script.defer = true;
-
-document.head.appendChild(script);
 
 /* ── UTILS ───────────────────────────────────────────────────── */
 export function formatNumber(n) { return Number(n).toLocaleString('en-IN') }
