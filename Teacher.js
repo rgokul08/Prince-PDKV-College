@@ -38,15 +38,23 @@ let _attStus= []
 // ── BOOT ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   initStickyHeader(); initHamburger(); initPageTransitions(); initRipple()
-  await initAuth()
+
+  // Show login OR restore session immediately — don't wait for initAuth
+  const saved = sessionStorage.getItem(SESS_KEY)
+  if (saved) {
+    _regno = saved
+    showSec('loading')
+    loadPortal(saved)  // non-blocking — loads in background
+  } else {
+    showSec('login')
+  }
+
+  document.getElementById('loginForm')?.addEventListener('submit', doLogin)
   document.getElementById('headerLoginBtn')?.addEventListener('click', ()=>openAuthModal('login'))
   document.querySelectorAll('.global-header-logout').forEach(b=>b.addEventListener('click',()=>logoutUser()))
 
-  const saved = sessionStorage.getItem(SESS_KEY)
-  if (saved) { _regno=saved; await loadPortal(saved) }
-  else showSec('login')
-
-  document.getElementById('loginForm')?.addEventListener('submit', doLogin)
+  // Init auth in background (for header chips etc) — non-blocking
+  initAuth()
   initFU()
 })
 
@@ -66,18 +74,39 @@ function showSec(id){
 // ── LOGIN ─────────────────────────────────────────────────────
 async function doLogin(e){
   e.preventDefault()
-  const regno=document.getElementById('inRegno')?.value?.trim().toUpperCase()
-  const pass =document.getElementById('inPass')?.value
-  if(!regno||!pass){setMsg('Enter Register No. & Password','err');return}
-  const btn=document.getElementById('loginBtn');btn.disabled=true;btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Signing In…';clearMsg()
+  const regno = document.getElementById('inRegno')?.value?.trim().toUpperCase()
+  const pass  = document.getElementById('inPass')?.value
+  if (!regno||!pass) { setMsg('Enter Register No. & Password','err'); return }
 
-  const {data,error}=await supabase.from('teacher_credentials').select('*').eq('register_no',regno).maybeSingle()
-  if(error||!data){setMsg('Register number not found.','err');rb(btn);return}
-  if(data.password!==pass){setMsg('Incorrect password.','err');rb(btn);return}
+  const btn = document.getElementById('loginBtn')
+  btn.disabled=true; btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Signing In…'
+  clearMsg()
 
-  sessionStorage.setItem(SESS_KEY,regno);_regno=regno
-  showToast(`Welcome, Teacher ${regno}!`,'success')
-  await loadPortal(regno);rb(btn)
+  // Fetch credentials and profile in PARALLEL for speed
+  const [credRes, profileRes] = await Promise.all([
+    supabase.from('teacher_credentials').select('password').eq('register_no', regno).maybeSingle(),
+    supabase.from('teacher_information').select('*').ilike('register_no', regno).maybeSingle()
+  ])
+
+  if (credRes.error || !credRes.data) { setMsg('Register number not found.','err'); rb(btn); return }
+  if (credRes.data.password !== pass)  { setMsg('Incorrect password.','err');        rb(btn); return }
+
+  // Login success
+  sessionStorage.setItem(SESS_KEY, regno)
+  _regno = regno
+  rb(btn)
+  showToast(`Welcome, Teacher ${regno}!`, 'success')
+
+  // Use already-fetched profile data — no extra DB call
+  const t = profileRes.data || null
+  if (!t) {
+    showSec('setup')
+    await renderSetup(regno, null)
+  } else {
+    _profile = t
+    showSec('profile')
+    await renderProfile(t)
+  }
 }
 
 function setMsg(t,tp){const e=document.getElementById('loginMsg');if(!e)return;e.className=`tc-msg tc-${tp}`;e.innerHTML=`<i class="fas fa-${tp==='err'?'exclamation-circle':'check-circle'}"></i> ${t}`;e.style.display='flex'}
@@ -109,14 +138,33 @@ function bindPrev(fId,wId,iId,rmId){
 // ── LOAD PORTAL ───────────────────────────────────────────────
 async function loadPortal(regno){
   showSec('loading')
-  const {data:t}=await supabase.from('teacher_information').select('*').ilike('register_no',regno).maybeSingle()
-  if(!t){await renderSetup(regno, null)}
-  else{_profile=t;showSec('profile');await renderProfile(t)}
+  const {data:t, error} = await supabase
+    .from('teacher_information')
+    .select('*')
+    .ilike('register_no', regno)
+    .maybeSingle()
+
+  if (error) {
+    showToast('Error loading profile: ' + error.message, 'error')
+    showSec('login')
+    return
+  }
+
+  if (!t) {
+    // No profile yet — show setup form (pass null, already fetched)
+    showSec('setup')
+    await renderSetup(regno, null)
+  } else {
+    _profile = t
+    showSec('profile')
+    await renderProfile(t)
+  }
 }
 
 // ── SETUP FORM ────────────────────────────────────────────────
 async function renderSetup(regno, existingData = null){
-  if (!existingData) {
+  // Only fetch from DB if not already provided (e.g. when called from tcEdit)
+  if (existingData === undefined) {
     const {data} = await supabase.from('teacher_information')
       .select('*').ilike('register_no',regno).maybeSingle()
     existingData = data || null

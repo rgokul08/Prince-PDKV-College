@@ -40,18 +40,25 @@ let _rtCh  = null
 document.addEventListener('DOMContentLoaded', async () => {
   initStickyHeader(); initHamburger(); initPageTransitions(); initRipple()
   initParticles()
-  await initAuth()
 
+  // Show login OR restore session immediately — don't wait for initAuth
+  const saved = sessionStorage.getItem(SESS_KEY)
+  if (saved) {
+    _regno = saved
+    showSec('loading')
+    loadPortal(saved)  // non-blocking
+  } else {
+    showSec('login')
+  }
+
+  document.getElementById('loginForm')?.addEventListener('submit', handleLogin)
   document.getElementById('headerLoginBtn')
     ?.addEventListener('click', () => openAuthModal('login'))
   document.querySelectorAll('.global-header-logout')
     .forEach(b => b.addEventListener('click', async () => logoutUser()))
 
-  const saved = sessionStorage.getItem(SESS_KEY)
-  if (saved) { _regno = saved; await loadPortal(saved) }
-  else showSec('login')
-
-  document.getElementById('loginForm')?.addEventListener('submit', handleLogin)
+  // Init auth in background — non-blocking
+  initAuth()
   initFadeUp()
 })
 
@@ -118,19 +125,33 @@ async function handleLogin(e) {
   btn.disabled=true; btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Signing In…'
   hideMsg()
 
-  const { data, error } = await supabase.from('student_credentials')
-    .select('*').eq('register_no',regno).maybeSingle()
+  // Fetch credentials AND student profile in PARALLEL — faster login
+  const [credRes, profileRes] = await Promise.all([
+    supabase.from('student_credentials').select('password').eq('register_no', regno).maybeSingle(),
+    supabase.from('student_information').select('*').ilike('register_no', regno).maybeSingle()
+  ])
 
-  if (error)                  { showMsg('Database error — try again.','err');              resetBtn(btn); return }
-  if (!data)                  { showMsg('Register number not found. Contact admin.','err');resetBtn(btn); return }
-  if (data.password !== pass) { showMsg('Incorrect password.','err');                      resetBtn(btn); return }
+  if (credRes.error)                      { showMsg('Database error — try again.','err');              resetBtn(btn); return }
+  if (!credRes.data)                      { showMsg('Register number not found. Contact admin.','err');resetBtn(btn); return }
+  if (credRes.data.password !== pass)     { showMsg('Incorrect password.','err');                      resetBtn(btn); return }
 
-  sessionStorage.setItem(SESS_KEY,regno)
+  sessionStorage.setItem(SESS_KEY, regno)
   _regno = regno
-  showToast(`Welcome! Signed in as ${regno}`,'success')
-  await loadPortal(regno)
   resetBtn(btn)
+  showToast(`Welcome! Signed in as ${regno}`, 'success')
+
+  // Use already-fetched profile — no extra DB call
+  const stu = profileRes.data || null
+  if (!stu) {
+    showSec('setup')
+    await renderSetup(regno, null)
+  } else {
+    showSec('profile')
+    await renderProfile(stu)
+    setupRT(regno)
+  }
 }
+
 
 function showMsg(txt,type='err') {
   const el=document.getElementById('loginMsg'); if(!el) return
@@ -150,10 +171,23 @@ window.stLogout = () => {
 // ── load portal ───────────────────────────────────────────────
 async function loadPortal(regno) {
   showSec('loading')
-  const { data: stu } = await supabase.from('student_information')
-    .select('*').ilike('register_no',regno).maybeSingle()
-  if (!stu) { showSec('setup'); renderSetup(regno) }
-  else { showSec('profile'); await renderProfile(stu); setupRT(regno) }
+  const { data: stu, error } = await supabase.from('student_information')
+    .select('*').ilike('register_no', regno).maybeSingle()
+
+  if (error) {
+    showToast('Error loading profile: ' + error.message, 'error')
+    showSec('login')
+    return
+  }
+
+  if (!stu) {
+    showSec('setup')
+    await renderSetup(regno, null)
+  } else {
+    showSec('profile')
+    await renderProfile(stu)
+    setupRT(regno)
+  }
 }
 
 // ── image upload ──────────────────────────────────────────────
@@ -185,13 +219,15 @@ function bindPreview(fileId,wrapId,imgId,rmId) {
 
 // ── SETUP FORM ────────────────────────────────────────────────
 // existingData is passed when editing, null when first-time setup
-async function renderSetup(regno, existingData = null) {
-  // If editing and no existing data provided, fetch it
-  if (!existingData) {
+async function renderSetup(regno, existingData = undefined) {
+  // Only fetch from DB if caller didn't provide data (i.e. called from stEdit)
+  if (existingData === undefined) {
     const { data } = await supabase.from('student_information')
       .select('*').ilike('register_no', regno).maybeSingle()
     existingData = data || null
   }
+  // existingData = null means first-time setup (no record yet)
+  // existingData = object means editing existing record
 
   const isEdit = !!existingData
   const d = existingData || {}
