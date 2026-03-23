@@ -1,6 +1,6 @@
 {
   "name": "pdkv-college",
-  "version": "2.3.7",
+  "version": "5.3.7",
   "description": "Prince Dr K Vasudevan College Website",
   "scripts": {
     "dev": "vite",
