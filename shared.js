@@ -194,6 +194,32 @@ export function initModalCloseHandlers() {
   })
 }
 
+/* ── PASSWORD TOGGLE ─────────────────────────────────────────── */
+// Call this after injecting any form containing .pw-toggle-wrap elements.
+// Wrapping: <div class="pw-toggle-wrap">
+//             <input type="password" class="form-input" .../>
+//             <button type="button" class="pw-eye-btn"><i class="fas fa-eye"></i></button>
+//           </div>
+export function initPasswordToggles(container) {
+  const scope = container || document
+  scope.querySelectorAll('.pw-toggle-wrap').forEach(wrap => {
+    if (wrap.dataset.pwInit) return   // prevent double-binding
+    wrap.dataset.pwInit = '1'
+    const inp = wrap.querySelector('input')
+    const btn = wrap.querySelector('.pw-eye-btn')
+    if (!inp || !btn) return
+    btn.addEventListener('click', (e) => {
+      e.preventDefault()
+      const show = inp.type === 'password'
+      inp.type   = show ? 'text' : 'password'
+      btn.innerHTML = show
+        ? '<i class="fas fa-eye-slash"></i>'
+        : '<i class="fas fa-eye"></i>'
+      btn.title = show ? 'Hide password' : 'Show password'
+    })
+  })
+}
+
 /* ── GLOBAL AUTH ─────────────────────────────────────────────── */
 let _currentUser  = null
 let _userProfile  = null
@@ -209,13 +235,23 @@ export async function initAuth() {
   if (!document.getElementById('globalAuthModal')) {
     document.body.insertAdjacentHTML('beforeend', _authModalHTML())
   }
+
   try {
     const { data: { session } } = await supabase.auth.getSession()
     if (session?.user) {
       _currentUser = session.user
-      const { data } = await supabase
-        .from('login_information').select('*').eq('id', _currentUser.id).maybeSingle()
-      _userProfile = data || {}
+      // ⚡ Non-blocking — fetch profile in background, don't freeze UI
+      supabase
+        .from('login_information')
+        .select('*')
+        .eq('id', _currentUser.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          _userProfile = data || {}
+          updateHeaderAuthUI()
+          _notify()
+        })
+        .catch(() => { _userProfile = {}; updateHeaderAuthUI(); _notify() })
     }
   } catch(e) { console.warn('Auth session error:', e) }
 
@@ -223,18 +259,27 @@ export async function initAuth() {
   updateHeaderAuthUI()
   _notify()
 
-  supabase.auth.onAuthStateChange(async (_event, session) => {
+  supabase.auth.onAuthStateChange((_event, session) => {
     if (session?.user) {
       _currentUser = session.user
-      const { data } = await supabase
-        .from('login_information').select('*').eq('id', _currentUser.id).maybeSingle()
-        .catch(() => ({ data: {} }))
-      _userProfile = data || {}
+      // ⚡ Non-blocking profile fetch on every auth state change
+      supabase
+        .from('login_information')
+        .select('*')
+        .eq('id', _currentUser.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          _userProfile = data || {}
+          updateHeaderAuthUI()
+          _notify()
+        })
+        .catch(() => { _userProfile = {}; updateHeaderAuthUI(); _notify() })
     } else {
-      _currentUser = null; _userProfile = null
+      _currentUser = null
+      _userProfile = null
+      updateHeaderAuthUI()
+      _notify()
     }
-    updateHeaderAuthUI()
-    _notify()
   })
 }
 
@@ -251,6 +296,8 @@ function _authModalHTML() {
           <button class="auth-tab active" data-tab="login"  id="loginTab">Sign In</button>
           <button class="auth-tab"        data-tab="signup" id="signupTab">Create Account</button>
         </div>
+
+        <!-- ── SIGN IN PANEL ── -->
         <div class="auth-tab-panel active" id="loginPanel">
           <form id="globalLoginForm" novalidate>
             <div class="form-group">
@@ -259,13 +306,18 @@ function _authModalHTML() {
             </div>
             <div class="form-group">
               <label class="form-label"><i class="fas fa-lock"></i> Password</label>
-              <input type="password" id="loginPassword" class="form-input" placeholder="••••••••" required autocomplete="current-password"/>
+              <div class="pw-toggle-wrap">
+                <input type="password" id="loginPassword" class="form-input" placeholder="••••••••" required autocomplete="current-password"/>
+                <button type="button" class="pw-eye-btn" title="Show password"><i class="fas fa-eye"></i></button>
+              </div>
             </div>
             <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:10px;" id="loginSubmitBtn">
               <i class="fas fa-sign-in-alt"></i> Sign In
             </button>
           </form>
         </div>
+
+        <!-- ── CREATE ACCOUNT PANEL ── -->
         <div class="auth-tab-panel" id="signupPanel">
           <form id="globalSignupForm" novalidate>
             <div class="form-group">
@@ -273,8 +325,12 @@ function _authModalHTML() {
               <input type="text" id="signupName" class="form-input" placeholder="Your full name" required/>
             </div>
             <div class="form-group">
-              <label class="form-label"><i class="fas fa-id-card"></i> Register Number *</label>
-              <input type="text" id="signupRegno" class="form-input" placeholder="e.g. 22CS0001" required/>
+              <label class="form-label">
+                <i class="fas fa-id-card"></i> Register Number
+                <span style="font-weight:400;opacity:0.55;font-size:0.76rem;">(optional)</span>
+              </label>
+              <!-- ✏️ NOT required — user can leave blank -->
+              <input type="text" id="signupRegno" class="form-input" placeholder="e.g. 22CS0001"/>
             </div>
             <div class="form-group">
               <label class="form-label"><i class="fas fa-phone"></i> Phone *</label>
@@ -295,13 +351,17 @@ function _authModalHTML() {
             </div>
             <div class="form-group">
               <label class="form-label"><i class="fas fa-lock"></i> Password (min 6 chars) *</label>
-              <input type="password" id="signupPassword" class="form-input" placeholder="••••••••" required minlength="6" autocomplete="new-password"/>
+              <div class="pw-toggle-wrap">
+                <input type="password" id="signupPassword" class="form-input" placeholder="••••••••" required minlength="6" autocomplete="new-password"/>
+                <button type="button" class="pw-eye-btn" title="Show password"><i class="fas fa-eye"></i></button>
+              </div>
             </div>
             <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:10px;" id="signupSubmitBtn">
               <i class="fas fa-user-plus"></i> Create Account
             </button>
           </form>
         </div>
+
       </div>
     </div>
   </div>`
@@ -321,45 +381,81 @@ function _wireAuthForms() {
     })
   })
 
-  // Login
+  // 👁 Wire password show/hide for both login & signup
+  initPasswordToggles(document.getElementById('globalAuthModal'))
+
+  // ── LOGIN ──
   document.getElementById('globalLoginForm')?.addEventListener('submit', async (e) => {
     e.preventDefault()
-    const btn  = document.getElementById('loginSubmitBtn')
+    const btn      = document.getElementById('loginSubmitBtn')
     const email    = document.getElementById('loginEmail')?.value.trim()
     const password = document.getElementById('loginPassword')?.value
     if (!email || !password) { showToast('Please enter email and password.', 'warning'); return }
-    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing In…'
+
+    btn.disabled = true
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing In…'
+
     const { error } = await supabase.auth.signInWithPassword({ email, password })
-    btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In'
+
+    btn.disabled = false
+    btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In'
+
     if (error) { showToast(error.message, 'error'); return }
+
     showToast('Welcome back! 👋', 'success')
     closeModal('globalAuthModal')
     document.getElementById('globalLoginForm').reset()
+    // Reset password field visibility
+    const pwInp = document.getElementById('loginPassword')
+    if (pwInp) pwInp.type = 'password'
+    const eyeBtn = document.querySelector('#loginPanel .pw-eye-btn')
+    if (eyeBtn) eyeBtn.innerHTML = '<i class="fas fa-eye"></i>'
   })
 
-  // Signup
+  // ── SIGNUP ──
   document.getElementById('globalSignupForm')?.addEventListener('submit', async (e) => {
     e.preventDefault()
     const btn      = document.getElementById('signupSubmitBtn')
     const name     = document.getElementById('signupName')?.value.trim()
-    const regno    = document.getElementById('signupRegno')?.value.trim()
+    const regno    = document.getElementById('signupRegno')?.value.trim() || '' // ✏️ optional
     const phone    = document.getElementById('signupPhone')?.value.trim()
     const gender   = document.getElementById('signupGender')?.value
     const email    = document.getElementById('signupEmail')?.value.trim()
     const password = document.getElementById('signupPassword')?.value
-    if (!name||!regno||!phone||!gender||!email||!password) { showToast('Fill all required fields.','warning'); return }
-    if (password.length < 6) { showToast('Password must be at least 6 characters.','warning'); return }
-    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating…'
+
+    // regno removed from required check — it is optional
+    if (!name || !phone || !gender || !email || !password) {
+      showToast('Fill all required fields.', 'warning'); return
+    }
+    if (password.length < 6) {
+      showToast('Password must be at least 6 characters.', 'warning'); return
+    }
+
+    btn.disabled = true
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating…'
+
     const { data, error } = await supabase.auth.signUp({ email, password })
-    btn.disabled = false; btn.innerHTML = '<i class="fas fa-user-plus"></i> Create Account'
+
+    btn.disabled = false
+    btn.innerHTML = '<i class="fas fa-user-plus"></i> Create Account'
+
     if (error) { showToast(error.message, 'error'); return }
+
+    // ⚡ Save profile in background — don't block the modal close
     if (data.user) {
-      await supabase.from('login_information').upsert({ id: data.user.id, name, regno, phone, gender, email })
+      supabase.from('login_information')
+        .upsert({ id: data.user.id, name, regno, phone, gender, email })
         .catch(() => {})
     }
+
     showToast('Account created! Check your email to verify. 🎉', 'success')
     closeModal('globalAuthModal')
     document.getElementById('globalSignupForm').reset()
+    // Reset password field visibility
+    const pwInp = document.getElementById('signupPassword')
+    if (pwInp) pwInp.type = 'password'
+    const eyeBtn = document.querySelector('#signupPanel .pw-eye-btn')
+    if (eyeBtn) eyeBtn.innerHTML = '<i class="fas fa-eye"></i>'
   })
 }
 
@@ -483,3 +579,141 @@ export function initPageTransitions() {
 
 /* ── UTILS ───────────────────────────────────────────────────── */
 export function formatNumber(n) { return Number(n).toLocaleString('en-IN') }
+
+/* ── PHOTO UPLOAD — fast, instant preview, cache-busted ──────── */
+// Usage in Student.js / Teacher.js:
+//   const url = await uploadProfilePhoto(file, 'image_files', `avatars/${userId}.jpg`, ['.st-av', '#profileImg'])
+//
+export async function uploadProfilePhoto(file, bucket, storagePath, imgSelectors = []) {
+  if (!file) return null
+
+  // 🖼 Show instant local preview immediately — no waiting for upload
+  const localUrl = URL.createObjectURL(file)
+  imgSelectors.forEach(sel => {
+    document.querySelectorAll(sel).forEach(img => { img.src = localUrl })
+  })
+
+  // ⚡ Compress images > 1 MB before uploading to keep it fast
+  let uploadFile = file
+  if (file.size > 1_000_000 && file.type.startsWith('image/')) {
+    try { uploadFile = await _compressImage(file, 800, 0.82) } catch (_) {}
+  }
+
+  const { error } = await supabase.storage
+    .from(bucket)
+    .upload(storagePath, uploadFile, { upsert: true, contentType: uploadFile.type })
+
+  URL.revokeObjectURL(localUrl)
+
+  if (error) {
+    showToast('Photo upload failed: ' + error.message, 'error')
+    return null
+  }
+
+  const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(storagePath)
+  // 🔄 Cache-buster — forces browser to load new image even if URL looks same
+  const finalUrl = `${publicUrl}?t=${Date.now()}`
+
+  // Update every matching image element in the DOM immediately
+  imgSelectors.forEach(sel => {
+    document.querySelectorAll(sel).forEach(img => { img.src = finalUrl })
+  })
+
+  return finalUrl
+}
+
+// Internal image compressor using canvas
+function _compressImage(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = reject
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onerror = reject
+      img.onload = () => {
+        const scale  = Math.min(1, maxDim / Math.max(img.width, img.height))
+        const w      = Math.round(img.width  * scale)
+        const h      = Math.round(img.height * scale)
+        const canvas = document.createElement('canvas')
+        canvas.width = w; canvas.height = h
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+        canvas.toBlob(blob => {
+          if (!blob) { reject(new Error('Compression failed')); return }
+          resolve(new File([blob], file.name, { type: 'image/jpeg' }))
+        }, 'image/jpeg', quality)
+      }
+      img.src = e.target.result
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+/* ── FAST PROFILE SAVE ───────────────────────────────────────── */
+// Runs photo upload + DB upsert in PARALLEL using Promise.all()
+// for maximum speed. Calls onSuccess(photoUrl) when done.
+//
+// Usage:
+//   await saveProfile({
+//     userId: user.id,
+//     fields: { name, phone, regno, ... },
+//     photoFile: fileInputEl.files[0],          // optional
+//     photoBucket: 'image_files',
+//     photoPathFn: (id) => `avatars/${id}.jpg`,
+//     photoImgSelectors: ['.st-av', '#myPhoto'],
+//     onSuccess: (url) => showToast('Saved! ✅', 'success'),
+//     onError:   (err) => showToast(err.message, 'error')
+//   })
+//
+export async function saveProfile({
+  userId,
+  fields,
+  photoFile         = null,
+  photoBucket       = 'image_files',
+  photoPathFn       = (id) => `avatars/${id}.jpg`,
+  photoImgSelectors = [],
+  onSuccess         = null,
+  onError           = null
+} = {}) {
+  if (!userId) return false
+
+  if (photoFile) {
+    const path = photoPathFn(userId)
+
+    // ⚡ PARALLEL: upload photo + save other fields at the same time
+    const [photoUrl, { error: dbErr }] = await Promise.all([
+      uploadProfilePhoto(photoFile, photoBucket, path, photoImgSelectors),
+      supabase.from('login_information').upsert({ id: userId, ...fields })
+    ])
+
+    if (dbErr) {
+      showToast('Save failed: ' + dbErr.message, 'error')
+      onError?.(dbErr)
+      return false
+    }
+
+    // Patch photo_url in background after both complete
+    if (photoUrl) {
+      supabase.from('login_information')
+        .update({ photo_url: photoUrl })
+        .eq('id', userId)
+        .catch(() => {})
+    }
+
+    onSuccess?.(photoUrl)
+  } else {
+    // No photo — single fast upsert
+    const { error } = await supabase
+      .from('login_information')
+      .upsert({ id: userId, ...fields })
+
+    if (error) {
+      showToast('Save failed: ' + error.message, 'error')
+      onError?.(error)
+      return false
+    }
+
+    onSuccess?.(null)
+  }
+
+  return true
+}
