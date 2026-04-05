@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ── GALLERY ───────────────────────────────────────────────────
 const MEDIA_EXTS  = ['jpg','jpeg','png','gif','webp','svg','mp4','webm','mov']
 const VIDEO_EXTS  = ['mp4','webm','mov']
-const FALLBACK_IMG = 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=600&q=80'
+const FALLBACK_IMG = 'https://gemini.google.com/share/92de10e3071d'
 
 function getExt(name) { return name.split('.').pop().toLowerCase() }
 function isMedia(f)   { return MEDIA_EXTS.includes(getExt(f.name)) }
