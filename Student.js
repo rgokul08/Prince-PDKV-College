@@ -3,6 +3,9 @@
 // Fixes: null guards, realtime cleanup on re-login,
 //        achievement modal re-bind, stEdit null check,
 //        uploadImg error handling
+// Task 3: Daily Attendance breakdown shows only last 7 days records.
+//         Each day it auto-updates (rolling window of 7 days from today).
+//         Absent chips / breakdown details still show ALL absent records.
 // ================================================================
 import { supabase } from './supabaseClient.js'
 import {
@@ -469,6 +472,13 @@ function infoItem(ico, lbl, val) {
 }
 
 // ── ATTENDANCE ────────────────────────────────────────────────
+// TASK 3: Helper — get ISO date string for N days ago from today
+function getDateNDaysAgo(n) {
+  const d = new Date()
+  d.setDate(d.getDate() - n)
+  return d.toISOString().split('T')[0]
+}
+
 async function loadAtt(regno) {
   const c = document.getElementById('attSec'); if (!c) return
   const { data } = await supabase.from('attendance_information')
@@ -502,28 +512,35 @@ async function loadAtt(regno) {
     warnCls = 'saw-bad'
   }
 
-  const absArr = Array.isArray(data.absent_details) ? data.absent_details : []
-  const absHtml = absArr.length ? `
-    <div class="st-abs-wrap">
-      <div class="st-abs-title"><i class="fas fa-times-circle"></i> Absent Sessions (${absArr.length})</div>
-      <div class="st-abs-chips">
-        ${absArr.slice(0, 30).map(d => {
-          const dateStr = d.date
-            ? new Date(d.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
-            : '—'
-          const subjStr = d.subject_name ? ` · ${d.subject_name}` : ''
-          return `<span class="st-abs-chip"><i class="fas fa-calendar-times"></i>${dateStr}${d.period ? ` · P${d.period}` : ''}${subjStr}</span>`
-        }).join('')}
-        ${absArr.length > 30 ? `<span class="st-abs-chip st-abs-more">+${absArr.length - 30} more</span>` : ''}
-      </div>
-    </div>` : ''
+  // ── TASK 3: Daily Attendance Breakdown — last 7 days ONLY ──────────────
+  // Calculate the cutoff date: 7 days ago from today (rolling window)
+  const sevenDaysAgo = getDateNDaysAgo(7)
 
   const periodStats = Array.isArray(data.period_stats) ? data.period_stats : []
-  const dayStatsHtml = periodStats.length ? `
+
+  // Filter period_stats to only include records from the last 7 days
+  const recentPeriodStats = periodStats.filter(d => {
+    if (!d.date) return false
+    // d.date is expected as 'YYYY-MM-DD' string
+    return d.date >= sevenDaysAgo
+  })
+
+  // Sort by date descending (most recent first) then show last 7 days
+  const sortedRecentStats = [...recentPeriodStats].sort((a, b) => {
+    if (a.date > b.date) return -1
+    if (a.date < b.date) return 1
+    return 0
+  })
+
+  // Build the day stats HTML — only for last 7 days
+  const dayStatsHtml = sortedRecentStats.length ? `
     <div class="st-day-stats">
-      <div class="st-abs-title"><i class="fas fa-chart-bar"></i> Daily Attendance Breakdown</div>
+      <div class="st-abs-title" style="margin-bottom:12px;">
+        <i class="fas fa-chart-bar"></i> Daily Attendance — Last 7 Days
+        <span style="font-size:0.68rem;opacity:0.55;margin-left:8px;font-weight:400;">(${sevenDaysAgo} to today)</span>
+      </div>
       <div class="st-day-grid">
-        ${periodStats.slice(-14).map(d => {
+        ${sortedRecentStats.map(d => {
           const pctD  = d.total > 0 ? ((d.present / d.total) * 100).toFixed(0) : 0
           const colD  = pctD >= 75 ? 'var(--sp-green)' : pctD >= 50 ? 'var(--sp-gold)' : 'var(--sp-red)'
           const dateStr = d.date
@@ -535,6 +552,31 @@ async function loadAtt(regno) {
             <div class="st-day-pct" style="color:${colD}">${pctD}%</div>
             <div class="st-day-sub">${d.present}/${d.total} periods</div>
           </div>`
+        }).join('')}
+      </div>
+    </div>` : (periodStats.length > 0 ? `
+    <div class="st-day-stats">
+      <div class="st-abs-title" style="margin-bottom:10px;">
+        <i class="fas fa-chart-bar"></i> Daily Attendance — Last 7 Days
+      </div>
+      <div style="text-align:center;padding:16px 0;color:var(--sp-muted);font-size:0.85rem;">
+        <i class="fas fa-calendar-times" style="font-size:1.4rem;display:block;margin-bottom:8px;opacity:0.45;"></i>
+        No attendance recorded in the last 7 days
+      </div>
+    </div>` : '')
+
+  // ── TASK 3: Absent chips — show ALL absent records (no date filter) ──────
+  const absArr = Array.isArray(data.absent_details) ? data.absent_details : []
+  const absHtml = absArr.length ? `
+    <div class="st-abs-wrap">
+      <div class="st-abs-title"><i class="fas fa-times-circle"></i> Absent Sessions (${absArr.length} total)</div>
+      <div class="st-abs-chips">
+        ${absArr.map(d => {
+          const dateStr = d.date
+            ? new Date(d.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+            : '—'
+          const subjStr = d.subject_name ? ` · ${d.subject_name}` : ''
+          return `<span class="st-abs-chip"><i class="fas fa-calendar-times"></i>${dateStr}${d.period ? ` · P${d.period}` : ''}${subjStr}</span>`
         }).join('')}
       </div>
     </div>` : ''

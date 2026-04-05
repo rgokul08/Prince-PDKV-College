@@ -8,6 +8,9 @@
 //   - showSec: key construction corrected
 //   - Modal close null guards added
 //   - selDept: correct Set mutation
+// Task 1: Teacher image upload to image_files/Teacher_images bucket,
+//         display image prominently near name in profile
+// Task 2: Classroom creation stores in classrooms Supabase table (verified)
 // ================================================================
 import { supabase } from './supabaseClient.js'
 import {
@@ -152,6 +155,7 @@ window.tcLogout = () => {
 }
 
 // ── IMAGE UPLOAD ──────────────────────────────────────────────
+// TASK 1: Upload teacher image to image_files/Teacher_images/{regno}.{ext}
 async function uploadImg(fileInputId, folder, key) {
   const inp = document.getElementById(fileInputId)
   const f   = inp?.files?.[0]
@@ -166,7 +170,7 @@ async function uploadImg(fileInputId, folder, key) {
   return publicUrl + '?t=' + Date.now()
 }
 
-// Resolve teacher photo from DB url or storage listing (no unreliable HEAD requests)
+// TASK 1: Resolve teacher photo from DB url or storage listing
 async function resolveTeacherPhoto(regno, savedUrl) {
   // If DB has a URL already, refresh its cache-bust and return it
   if (savedUrl && savedUrl.startsWith('http')) {
@@ -286,15 +290,15 @@ async function renderSetup(regno, existingData) {
           <div class="tg-fg tgfull"><label class="tl"><i class="fas fa-home"></i> Address</label>
             <textarea id="f_addr" class="tta" placeholder="Your residential address">${esc(d.address||'')}</textarea></div>
           <div class="tg-fg tgfull">
-            <label class="tl"><i class="fas fa-camera"></i> Profile Photo
-              <span style="opacity:.4;font-weight:400">(optional${isEdit ? ' — leave blank to keep existing' : ''})</span></label>
+            <label class="tl"><i class="fas fa-camera"></i> Profile Photo *
+              <span style="opacity:.4;font-weight:400">(${isEdit ? 'leave blank to keep existing' : 'required — will be shown on your profile'})</span></label>
             ${d.image_url ? `<div class="tc-existing-photo" style="margin-bottom:10px">
               <img src="${esc(d.image_url)}" onerror="this.parentElement.style.display='none'" />
               <span>Current photo — upload new to replace</span></div>` : ''}
             <div class="tc-upload" id="tUpArea">
               <input type="file" id="f_img" accept="image/*" />
               <span class="tc-upload-ico"><i class="fas fa-cloud-upload-alt"></i></span>
-              <div class="tc-upload-txt"><strong>Click or drag &amp; drop</strong><br><small>JPG, PNG — max 5 MB</small></div>
+              <div class="tc-upload-txt"><strong>Click or drag &amp; drop your photo</strong><br><small>JPG, PNG — max 5 MB — saved to Teacher_images folder</small></div>
             </div>
             <div class="tc-img-prev" id="tImgPrev">
               <img id="tImgPrevImg" src="" alt="" />
@@ -329,11 +333,16 @@ async function renderSetup(regno, existingData) {
       btn.disabled = false; btn.innerHTML = `<i class="fas fa-save"></i> ${isEdit ? 'Update My Profile' : 'Save My Profile'}`; return
     }
 
+    // TASK 1: Upload image to image_files/Teacher_images/{regno}.{ext}
     let imgUrl = d.image_url || null
     if (document.getElementById('f_img')?.files?.[0]) {
+      showToast('Uploading photo to Teacher_images…', 'info', 2000)
       // key = regno so path = Teacher_images/TCH001.jpg — always consistent
       const newUrl = await uploadImg('f_img', TCH_FOLD, regno)
-      if (newUrl) imgUrl = newUrl
+      if (newUrl) {
+        imgUrl = newUrl
+        showToast('Photo uploaded successfully! ✅', 'success', 2000)
+      }
     }
 
     const { error } = await supabase.from('teacher_information').upsert({
@@ -379,14 +388,14 @@ window.tcCancelEdit = () => {
 }
 
 // ── RENDER PROFILE ────────────────────────────────────────────
+// TASK 1: Display teacher image prominently at top center / near name
 async function renderProfile(t) {
   const c = document.getElementById('secProfile'); if (!c) return
 
   const fallbackPhoto = `https://ui-avatars.com/api/?name=${encodeURIComponent(t.name || t.register_no)}&background=ff9f1c&color=060912&size=200&bold=true`
 
   // If DB already has a URL (e.g. freshly injected after upload), use it immediately
-  // — no need for async storage listing which can be slow or fail
-  let photo
+  let photo 
   if (t.image_url && t.image_url.startsWith('http')) {
     // Refresh cache-bust so browser always fetches the latest version
     photo = t.image_url.split('?')[0] + '?t=' + Date.now()
@@ -405,29 +414,83 @@ async function renderProfile(t) {
 
   const subjs = t.subjects ? t.subjects.split(',').map(s => s.trim()).filter(Boolean) : []
 
+  // TASK 1: Teacher photo displayed prominently at top center above name
   c.innerHTML = `
   <div class="tc-wrap"><div>
-    <div class="tg tc-prof-hero tu">
-      <div class="tc-av-wrap">
-        <img src="${photo}" alt="${esc(t.name || t.register_no)}" class="tc-av"
-             onerror="this.onerror=null;this.src='${fallbackPhoto}'" />
-        <div class="tc-av-ring"></div>
+
+    <!-- TASK 1: Profile photo card — centered at top, above name details -->
+    <div class="tg tc-prof-photo-card tu" style="
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      padding: clamp(28px,5vw,46px) 28px 32px;
+      margin-bottom:22px;
+      text-align:center;
+      position:relative;
+      overflow:hidden;
+    ">
+      <!-- Decorative background glow behind photo -->
+      <div style="
+        position:absolute; top:-60px; left:50%; transform:translateX(-50%);
+        width:280px; height:280px;
+        background:radial-gradient(circle, rgba(245,158,11,0.12), transparent 70%);
+        border-radius:50%; pointer-events:none;
+      "></div>
+
+      <!-- Teacher Photo — centered, large, prominent -->
+      <div class="tc-av-wrap" style="position:relative; width:148px; height:148px; margin-bottom:20px; flex-shrink:0;">
+        <img
+          src="${photo}"
+          alt="${esc(t.name || t.register_no)}"
+          class="tc-av"
+          style="
+            width:148px; height:148px; border-radius:50%; object-fit:cover; display:block;
+            border:4px solid transparent;
+            background: linear-gradient(var(--tc-surface),var(--tc-surface)) padding-box,
+                        linear-gradient(135deg, var(--tc-amber), var(--tc-blue2) 50%, var(--tc-violet)) border-box;
+            box-shadow: 0 0 0 6px rgba(245,158,11,0.12), 0 8px 32px rgba(0,0,0,0.45);
+            transition: transform 0.5s cubic-bezier(0.34,1.56,0.64,1);
+          "
+          onerror="this.onerror=null;this.src='${fallbackPhoto}'"
+        />
+        <!-- Animated ring around photo -->
+        <div style="
+          position:absolute; inset:-8px; border-radius:50%;
+          border:2px solid transparent;
+          background: linear-gradient(var(--tc-dark),var(--tc-dark)) padding-box,
+                      linear-gradient(135deg, var(--tc-amber), var(--tc-blue2), var(--tc-violet)) border-box;
+          animation: tcRing 11s linear infinite;
+        "></div>
+        <!-- Online indicator -->
+        <div style="
+          position:absolute; bottom:6px; right:6px;
+          width:18px; height:18px; border-radius:50%;
+          background:#34d399; border:3px solid var(--tc-surface);
+          box-shadow:0 0 8px rgba(52,211,153,0.6);
+          animation: pulse 2s ease-in-out infinite;
+        "></div>
       </div>
-      <div class="tc-prof-info">
-        <div class="tc-prof-name">${esc(t.name || t.register_no)}</div>
-        <div class="tc-prof-desig">${esc(t.designation || '')}</div>
-        <div class="tc-prof-dept">${t.department ? 'Dept. of ' + esc(t.department) : ''}</div>
-        <div class="tc-prof-badges">
+
+      <!-- Teacher name and designation below photo -->
+      <div class="tc-prof-info" style="z-index:1;">
+        <div class="tc-prof-name" style="font-size:clamp(1.4rem,2.5vw,2rem); margin-bottom:6px;">${esc(t.name || t.register_no)}</div>
+        <div class="tc-prof-desig" style="font-size:0.95rem; margin-bottom:5px;">${esc(t.designation || '')}</div>
+        <div class="tc-prof-dept" style="font-size:0.88rem; margin-bottom:16px;">${t.department ? 'Dept. of ' + esc(t.department) : ''}</div>
+        <div class="tc-prof-badges" style="justify-content:center; gap:8px;">
           <span class="tbd tb-amber"><i class="fas fa-id-badge"></i> ${esc(t.register_no)}</span>
           ${t.qualification ? `<span class="tbd tb-teal"><i class="fas fa-graduation-cap"></i> ${esc(t.qualification)}</span>` : ''}
           ${t.experience    ? `<span class="tbd tb-green"><i class="fas fa-briefcase"></i> ${esc(t.experience)}</span>` : ''}
         </div>
       </div>
     </div>
+
+    <!-- Action buttons -->
     <div class="tc-prof-actions tu">
       <button class="tb tb-ghost" onclick="tcEdit()"><i class="fas fa-edit"></i> Edit Profile</button>
       <button class="tb tb-danger" onclick="tcLogout()"><i class="fas fa-sign-out-alt"></i> Sign Out</button>
     </div>
+
+    <!-- Info grid -->
     <div class="tc-info-grid tu">
       ${tci('fas fa-envelope','tci-amb','Email',t.email)}
       ${tci('fas fa-phone','tci-tel','Phone',t.phone)}
@@ -438,13 +501,22 @@ async function renderProfile(t) {
       ${tci('fas fa-briefcase','tci-blu','Experience',t.experience)}
       ${tci('fas fa-map-marker-alt','tci-red','Address',t.address)}
     </div>
+
     ${subjs.length ? `
     <div class="tg tc-subj-wrap tu">
       <div class="tc-subj-h"><i class="fas fa-book-open"></i> Subjects Handling</div>
       <div class="tc-subj-chips">${subjs.map((s,i)=>`<span class="tc-schip" style="animation-delay:${i*.06}s"><i class="fas fa-book"></i> ${esc(s)}</span>`).join('')}</div>
     </div>` : ''}
+
     <div id="attMgr" class="tu"></div>
-  </div></div>`
+  </div></div>
+
+  <style>
+    @keyframes pulse {
+      0%,100% { box-shadow: 0 0 0 0 rgba(52,211,153,0.4); }
+      50%      { box-shadow: 0 0 0 6px rgba(52,211,153,0); }
+    }
+  </style>`
 
   setTimeout(initFU, 80)
 
@@ -615,7 +687,7 @@ window.fltStus = () => {
   if (el) el.innerHTML = stuSelHTML(grpStus(_stus), q)
 }
 
-// ── CREATE CLASSROOM ──────────────────────────────────────────
+// ── CREATE CLASSROOM (TASK 2: stores in classrooms table) ──────
 window.openCreate = () => {
   // FIX: clear Set by mutating, not reassigning
   _selStu.clear()
@@ -655,12 +727,17 @@ window.openCreate = () => {
   </div>`)
 }
 
+// TASK 2: saveRoom — inserts into classrooms Supabase table
 window.saveRoom = async () => {
   const name = document.getElementById('cc_name')?.value?.trim()
   const subj = document.getElementById('cc_subj')?.value?.trim()
   if (!name || !subj) { showToast('Classroom name & subject required.', 'warning'); return }
   if (_selStu.size === 0) { showToast('Select at least one student.', 'warning'); return }
 
+  const saveBtn = document.querySelector('#mCreate .tb-pri')
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating…' }
+
+  // TASK 2: Insert classroom record into Supabase classrooms table
   const { data, error } = await supabase.from('classrooms').insert({
     teacher_regno:  _regno,
     teacher_name:   _profile?.name || _regno,
@@ -671,9 +748,11 @@ window.saveRoom = async () => {
     student_regnos: [..._selStu]
   }).select().single()
 
+  if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="fas fa-save"></i> Create Classroom' }
+
   if (error) { showToast('Failed: ' + error.message, 'error'); return }
 
-  showToast(`Classroom "${name}" created! 🎉`, 'success')
+  showToast(`Classroom "${name}" created! 🎉 Saved to Supabase.`, 'success')
   _rooms.unshift(data)
   closeM('mCreate')
   refreshGrids()
