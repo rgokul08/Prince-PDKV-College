@@ -3,7 +3,8 @@ import {
   initStickyHeader, initHamburger, initScrollAnimations,
   openModal, closeModal, initModalCloseHandlers,
   showToast, initAuth, openAuthModal, logoutUser,
-  initRipple, initPageTransitions
+  initRipple, initPageTransitions,
+  sendEmailOtp, verifyEmailOtp, isEmailOtpVerified, clearOtpState
 } from './shared.js'
 
 // ── COURSE DATA ───────────────────────────────────────────────
@@ -117,16 +118,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('.global-header-logout')
     .forEach(btn => btn.addEventListener('click', () => logoutUser()))
 
-  // Course card → modal
   document.querySelectorAll('.course-card').forEach(card => {
     card.addEventListener('click', () => openCourseModal(card.dataset.course))
   })
 
-  // FIX: close modal button wired explicitly
   document.getElementById('modalCloseBtn')
     ?.addEventListener('click', () => closeModal('courseModal'))
 
-  // Filter buttons
   document.querySelectorAll('.cf-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.cf-btn').forEach(b => b.classList.remove('active'))
@@ -184,7 +182,6 @@ function initAdmissionForm() {
   const TOTAL_STEPS = 4
   let currentStep   = 1
 
-  // ── Step navigation ──
   function goToStep(step) {
     for (let i = 1; i <= TOTAL_STEPS; i++) {
       const panel = document.getElementById(`adm-panel-${i}`)
@@ -209,19 +206,29 @@ function initAdmissionForm() {
       ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  // ── Helpers ──
   const gv  = id => document.getElementById(id)?.value?.trim() || null
   const gn  = id => { const v = parseFloat(document.getElementById(id)?.value); return isNaN(v) ? null : v }
   const gi  = id => { const v = parseInt(document.getElementById(id)?.value);   return isNaN(v) ? null : v }
   const gb  = id => document.getElementById(id)?.checked || false
 
-  // ── Expose to HTML onclick ──
   window.admNext = function (fromStep) {
     if (fromStep === 1) {
       if (!gv('adm-name') || !gv('adm-email') || !gv('adm-phone') ||
           !gv('adm-gender') || !gv('adm-dob') || !gv('adm-category') ||
           !gv('adm-address') || !gv('adm-city') || !gv('adm-pincode')) {
         showToast('Please fill all required fields in Step 1.', 'warning'); return
+      }
+      // Check OTP verification for admission form email
+      const email = gv('adm-email')
+      if (!isEmailOtpVerified(email)) {
+        showToast('Please verify your email address with OTP before proceeding.', 'warning')
+        // Show OTP panel if not already shown
+        const panel = document.getElementById('adm_email_otp')
+        if (panel && panel.style.display === 'none') {
+          document.getElementById('adm_email_otp_sendBtn')?.click()
+        }
+        document.getElementById('adm_email_otp_sendBtn')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        return
       }
     }
     if (fromStep === 2) {
@@ -240,7 +247,6 @@ function initAdmissionForm() {
 
   window.admBack = function (fromStep) { goToStep(fromStep - 1) }
 
-  // ── UG/PG toggle ──
   document.querySelectorAll('input[name="applicantType"]').forEach(radio => {
     radio.addEventListener('change', () => {
       const isPG = radio.value === 'PG'
@@ -251,8 +257,9 @@ function initAdmissionForm() {
     })
   })
 
-  // ── Cutoff calculator ──
-  // FIX: guard against NaN — only show result if at least Physics+Chemistry exist
+  // Inject OTP fields into the admission form email area
+  _injectAdmissionEmailOtp()
+
   const calcCutoff = () => {
     const stream    = document.getElementById('adm-stream')?.value || ''
     const physics   = parseFloat(document.getElementById('adm-physics')?.value)   || 0
@@ -278,7 +285,6 @@ function initAdmissionForm() {
     document.getElementById(id)?.addEventListener('input',  calcCutoff)
   })
 
-  // ── Form submit ──
   document.getElementById('admissionForm')?.addEventListener('submit', async (e) => {
     e.preventDefault()
 
@@ -334,17 +340,17 @@ function initAdmissionForm() {
       ncc_quota:          gb('adm-ncc'),
       extra_curricular:   gv('adm-extra'),
       declaration_agreed: true,
-      status:             'Pending'
+      status:             'Pending',
+      email_verified:     true
     }
 
-    // Secondary validation guard
     if (!payload.name || !payload.email || !payload.phone) {
       showToast('Please fill in all required fields.', 'error')
       if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Application' }
       return
     }
 
-      const { data: savedApp, error } = await supabase
+    const { data: savedApp, error } = await supabase
       .from('admission_information')
       .insert(payload)
       .select('name,email,phone,course_pref_1,status,created_at')
@@ -356,7 +362,8 @@ function initAdmissionForm() {
       return
     }
 
-    // FIX: escape user data in success HTML to prevent XSS
+    clearOtpState(payload.email)
+
     const safeName  = esc(savedApp.name || payload.name)
     const safeEmail = esc(savedApp.email || payload.email)
     const appId     = 'PDKV-' + Date.now().toString().slice(-8)
@@ -378,7 +385,7 @@ function initAdmissionForm() {
           <div class="adm-status-cards" style="margin-top:16px;text-align:left;max-width:620px;margin-inline:auto;">
             <article class="adm-status-card">
               <div><strong>Applicant:</strong> ${safeName}</div>
-              <div><strong>Email:</strong> ${safeEmail}</div>
+              <div><strong>Email:</strong> ${safeEmail} ✅ Verified</div>
               <div><strong>Phone:</strong> ${esc(savedApp.phone || payload.phone || '—')}</div>
               <div><strong>Course:</strong> ${safeCourse}</div>
               <div><strong>Submitted:</strong> ${safeDate}</div>
@@ -396,7 +403,6 @@ function initAdmissionForm() {
     showToast('Application submitted successfully! 🎉 We will contact you soon.', 'success', 6000)
   })
 
-  // ── Review builder ──
   function buildReview() {
     const reviewEl = document.getElementById('adm-review-content')
     if (!reviewEl) return
@@ -411,7 +417,7 @@ function initAdmissionForm() {
           ${row('Name',     gv('adm-name'))}
           ${row('Gender',   gv('adm-gender'))}
           ${row('DOB',      gv('adm-dob'))}
-          ${row('Email',    gv('adm-email'))}
+          ${row('Email',    (gv('adm-email') || '—') + ' ✅')}
           ${row('Phone',    gv('adm-phone'))}
           ${row('Category',gv('adm-category'))}
           ${row('Quota',    gv('adm-quota'))}
@@ -457,12 +463,69 @@ function initAdmissionForm() {
       <span class="adm-review-val">${esc(String(value || '—'))}</span>
     </div>`
   }
+}
 
-  function esc(s) {
-    return String(s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-  }
+// Inject OTP verification widget after the email input in the admission form
+function _injectAdmissionEmailOtp() {
+  const emailInput = document.getElementById('adm-email')
+  if (!emailInput) return
+
+  // Wrap the email input in OTP row
+  const parent = emailInput.closest('.form-group')
+  if (!parent || parent.dataset.otpInjected) return
+  parent.dataset.otpInjected = 'true'
+
+  // Replace input with OTP-aware version
+  const originalInput = parent.querySelector('.form-input')
+  if (!originalInput) return
+
+  // Create OTP email row wrapper
+  const rowDiv = document.createElement('div')
+  rowDiv.className = 'otp-email-row'
+  parent.insertBefore(rowDiv, originalInput)
+  rowDiv.appendChild(originalInput)
+
+  const sendBtn = document.createElement('button')
+  sendBtn.type = 'button'
+  sendBtn.id = 'adm_email_otp_sendBtn'
+  sendBtn.className = 'btn-send-otp'
+  sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send OTP'
+  sendBtn.setAttribute('onclick', "pdkvSendOtp('adm-email','adm_email_otp')")
+  rowDiv.appendChild(sendBtn)
+
+  // OTP panel
+  const otpPanel = document.createElement('div')
+  otpPanel.id = 'adm_email_otp'
+  otpPanel.className = 'otp-verify-panel'
+  otpPanel.style.display = 'none'
+  otpPanel.innerHTML = `
+    <div class="otp-info-msg"><i class="fas fa-info-circle"></i> A 6-digit OTP has been sent to your email.</div>
+    <div class="otp-input-row">
+      <input type="text" id="adm_email_otp_code" class="form-input otp-code-input"
+        placeholder="Enter 6-digit OTP" maxlength="6" autocomplete="one-time-code"
+        oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
+      <button type="button" class="btn-verify-otp" id="adm_email_otp_verifyBtn"
+        onclick="pdkvVerifyOtp('adm-email','adm_email_otp')">
+        <i class="fas fa-shield-check"></i> Verify
+      </button>
+    </div>
+    <div class="otp-resend-row">
+      <span class="otp-timer" id="adm_email_otp_timer"></span>
+      <button type="button" class="otp-resend-btn" id="adm_email_otp_resendBtn"
+        onclick="pdkvResendOtp('adm-email','adm_email_otp')" style="display:none;">
+        <i class="fas fa-redo"></i> Resend OTP
+      </button>
+    </div>
+    <div class="otp-verified-badge" id="adm_email_otp_badge" style="display:none;">
+      <i class="fas fa-check-circle"></i> Email Verified!
+    </div>`
+  parent.appendChild(otpPanel)
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 function initAdmissionStatus() {

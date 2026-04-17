@@ -1,14 +1,11 @@
 // ============================================================
-// shared.js — PDKV College v5 (fully debugged + enhanced)
+// shared.js — PDKV College v6 (OTP Email Verification added)
+// All email inputs now require OTP verification before proceeding
 // ============================================================
 import { supabase } from './supabaseClient.js'
 import { injectSpeedInsights } from '@vercel/speed-insights'
 
-/* ── VERCEL SPEED INSIGHTS ──────────────────────────────────── */
-// Initialize Speed Insights for performance tracking
-injectSpeedInsights({
-  debug: false
-})
+injectSpeedInsights({ debug: false })
 
 /* ── TOAST ──────────────────────────────────────────────────── */
 export function showToast(message, type = 'success', duration = 4000) {
@@ -29,8 +26,354 @@ export function showToast(message, type = 'success', duration = 4000) {
   }, duration)
 }
 
+/* ── OTP EMAIL VERIFICATION SYSTEM ─────────────────────────── */
+// Stores OTP state per email in memory
+const _otpStore = {}
+
+// Generate a 6-digit OTP and send it via Supabase Edge Function / direct email
+// We use Supabase's signInWithOtp which sends a 6-digit code to the email
+export async function sendEmailOtp(email) {
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { success: false, error: 'Invalid email address.' }
+  }
+
+  try {
+    // Use Supabase's built-in OTP (sends 6-digit code via email)
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email,
+      options: {
+        shouldCreateUser: true,
+        data: { otp_only: true }
+      }
+    })
+
+    if (error) {
+      // Rate limit or other errors
+      return { success: false, error: error.message }
+    }
+
+    // Mark email as OTP-sent in memory
+    _otpStore[email] = { sent: true, verified: false, timestamp: Date.now() }
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: e.message || 'Failed to send OTP.' }
+  }
+}
+
+// Verify OTP entered by user against Supabase
+export async function verifyEmailOtp(email, token) {
+  if (!email || !token) return { success: false, error: 'Email and OTP required.' }
+
+  try {
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: email,
+      token: token,
+      type: 'email'
+    })
+
+    if (error) {
+      return { success: false, error: 'Invalid or expired OTP. Please try again.' }
+    }
+
+    // Mark as verified
+    if (_otpStore[email]) _otpStore[email].verified = true
+    return { success: true, session: data.session, user: data.user }
+  } catch (e) {
+    return { success: false, error: e.message || 'Verification failed.' }
+  }
+}
+
+// Check if email is verified in current session
+export function isEmailOtpVerified(email) {
+  return _otpStore[email]?.verified === true
+}
+
+// Clear OTP state for email
+export function clearOtpState(email) {
+  if (email) delete _otpStore[email]
+}
+
+/* ── OTP INPUT WIDGET BUILDER ───────────────────────────────── */
+// Returns HTML string for an OTP-enabled email field
+// fieldId: the email input id
+// otpWrapperId: the wrapper div id that will show OTP input
+export function buildOtpEmailField(fieldId, otpWrapperId, label = 'Email *', placeholder = 'your@email.com') {
+  return `
+    <div class="form-group otp-email-group" id="${otpWrapperId}_outer">
+      <label class="form-label"><i class="fas fa-envelope"></i> ${label}</label>
+      <div class="otp-email-row">
+        <input type="email" id="${fieldId}" class="form-input" placeholder="${placeholder}" required autocomplete="email"/>
+        <button type="button" class="btn-send-otp" id="${otpWrapperId}_sendBtn" onclick="pdkvSendOtp('${fieldId}','${otpWrapperId}')">
+          <i class="fas fa-paper-plane"></i> Send OTP
+        </button>
+      </div>
+      <div id="${otpWrapperId}" class="otp-verify-panel" style="display:none;">
+        <div class="otp-info-msg"><i class="fas fa-info-circle"></i> A 6-digit OTP has been sent to your email. Enter it below.</div>
+        <div class="otp-input-row">
+          <input type="text" id="${otpWrapperId}_code" class="form-input otp-code-input" 
+            placeholder="Enter 6-digit OTP" maxlength="6" autocomplete="one-time-code"
+            oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
+          <button type="button" class="btn-verify-otp" id="${otpWrapperId}_verifyBtn" onclick="pdkvVerifyOtp('${fieldId}','${otpWrapperId}')">
+            <i class="fas fa-shield-check"></i> Verify
+          </button>
+        </div>
+        <div class="otp-resend-row">
+          <span class="otp-timer" id="${otpWrapperId}_timer"></span>
+          <button type="button" class="otp-resend-btn" id="${otpWrapperId}_resendBtn" onclick="pdkvResendOtp('${fieldId}','${otpWrapperId}')" style="display:none;">
+            <i class="fas fa-redo"></i> Resend OTP
+          </button>
+        </div>
+        <div class="otp-verified-badge" id="${otpWrapperId}_badge" style="display:none;">
+          <i class="fas fa-check-circle"></i> Email Verified!
+        </div>
+      </div>
+    </div>`
+}
+
+/* ── GLOBAL OTP HANDLERS (attached to window) ───────────────── */
+// These are called by onclick in dynamically injected HTML
+window.pdkvSendOtp = async function(fieldId, wrapperId) {
+  const emailInput = document.getElementById(fieldId)
+  const sendBtn    = document.getElementById(wrapperId + '_sendBtn')
+  const panel      = document.getElementById(wrapperId)
+  const email      = emailInput?.value?.trim()
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showToast('Please enter a valid email address first.', 'warning')
+    emailInput?.focus()
+    return
+  }
+
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…' }
+
+  const result = await sendEmailOtp(email)
+
+  if (!result.success) {
+    showToast('Failed to send OTP: ' + result.error, 'error')
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send OTP' }
+    return
+  }
+
+  // Show OTP panel
+  if (panel) panel.style.display = 'block'
+  if (emailInput) emailInput.readOnly = true
+  if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = '<i class="fas fa-check"></i> OTP Sent' }
+  showToast('OTP sent to ' + email + ' ✉️', 'success')
+
+  // Start 60s countdown timer
+  _startOtpTimer(wrapperId, 60)
+
+  // Focus OTP input
+  setTimeout(() => document.getElementById(wrapperId + '_code')?.focus(), 200)
+}
+
+window.pdkvVerifyOtp = async function(fieldId, wrapperId) {
+  const emailInput  = document.getElementById(fieldId)
+  const codeInput   = document.getElementById(wrapperId + '_code')
+  const verifyBtn   = document.getElementById(wrapperId + '_verifyBtn')
+  const badge       = document.getElementById(wrapperId + '_badge')
+  const email       = emailInput?.value?.trim()
+  const token       = codeInput?.value?.trim()
+
+  if (!token || token.length !== 6) {
+    showToast('Please enter the 6-digit OTP.', 'warning')
+    codeInput?.focus()
+    return
+  }
+
+  if (verifyBtn) { verifyBtn.disabled = true; verifyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying…' }
+
+  const result = await verifyEmailOtp(email, token)
+
+  if (!result.success) {
+    showToast(result.error, 'error')
+    if (verifyBtn) { verifyBtn.disabled = false; verifyBtn.innerHTML = '<i class="fas fa-shield-check"></i> Verify' }
+    codeInput?.select()
+    return
+  }
+
+  // Success — show verified badge
+  if (badge) badge.style.display = 'flex'
+  if (codeInput) codeInput.readOnly = true
+  if (verifyBtn) { verifyBtn.style.display = 'none' }
+
+  const panel = document.getElementById(wrapperId)
+  if (panel) {
+    panel.querySelector('.otp-input-row')?.classList.add('verified')
+    panel.querySelector('.otp-resend-row')?.style && (panel.querySelector('.otp-resend-row').style.display = 'none')
+  }
+
+  showToast('Email verified successfully! ✅', 'success')
+
+  // Fire a custom event so forms can react
+  document.dispatchEvent(new CustomEvent('pdkv:emailVerified', { detail: { email, fieldId, wrapperId } }))
+}
+
+window.pdkvResendOtp = async function(fieldId, wrapperId) {
+  const emailInput = document.getElementById(fieldId)
+  const email      = emailInput?.value?.trim()
+  const resendBtn  = document.getElementById(wrapperId + '_resendBtn')
+  if (!email) return
+
+  if (resendBtn) { resendBtn.disabled = true; resendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>' }
+
+  // Clear verified state
+  clearOtpState(email)
+  const result = await sendEmailOtp(email)
+
+  if (!result.success) {
+    showToast('Failed to resend: ' + result.error, 'error')
+    if (resendBtn) { resendBtn.disabled = false; resendBtn.innerHTML = '<i class="fas fa-redo"></i> Resend OTP' }
+    return
+  }
+
+  // Reset code input
+  const codeInput = document.getElementById(wrapperId + '_code')
+  if (codeInput) { codeInput.value = ''; codeInput.readOnly = false }
+  const badge = document.getElementById(wrapperId + '_badge')
+  if (badge) badge.style.display = 'none'
+
+  const verifyBtn = document.getElementById(wrapperId + '_verifyBtn')
+  if (verifyBtn) { verifyBtn.style.display = ''; verifyBtn.disabled = false; verifyBtn.innerHTML = '<i class="fas fa-shield-check"></i> Verify' }
+
+  showToast('New OTP sent! ✉️', 'success')
+  _startOtpTimer(wrapperId, 60)
+}
+
+function _startOtpTimer(wrapperId, seconds) {
+  const timerEl   = document.getElementById(wrapperId + '_timer')
+  const resendBtn = document.getElementById(wrapperId + '_resendBtn')
+  if (resendBtn) resendBtn.style.display = 'none'
+
+  let remaining = seconds
+  const tick = () => {
+    if (!document.getElementById(wrapperId + '_timer')) return // element removed
+    if (timerEl) timerEl.textContent = `Resend in ${remaining}s`
+    if (remaining <= 0) {
+      if (timerEl) timerEl.textContent = ''
+      if (resendBtn) { resendBtn.style.display = 'inline-flex' }
+      return
+    }
+    remaining--
+    setTimeout(tick, 1000)
+  }
+  tick()
+}
+
+/* ── OTP CSS INJECTION ──────────────────────────────────────── */
+// Inject OTP-specific styles once
+function _injectOtpStyles() {
+  if (document.getElementById('pdkv-otp-styles')) return
+  const style = document.createElement('style')
+  style.id = 'pdkv-otp-styles'
+  style.textContent = `
+    .otp-email-row {
+      display: flex; gap: 8px; align-items: stretch;
+    }
+    .otp-email-row .form-input {
+      flex: 1; min-width: 0;
+    }
+    .btn-send-otp {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 10px 16px; border-radius: var(--radius-sm, 10px);
+      font-size: 0.82rem; font-weight: 700;
+      background: linear-gradient(135deg, var(--accent2, #2196F3), var(--accent2-dark, #1565C0));
+      color: white; border: none; cursor: pointer; white-space: nowrap;
+      transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+      font-family: var(--font-body, 'Plus Jakarta Sans', sans-serif);
+      flex-shrink: 0;
+    }
+    .btn-send-otp:hover:not(:disabled) {
+      transform: translateY(-2px); box-shadow: 0 6px 18px rgba(33,150,243,0.35);
+    }
+    .btn-send-otp:disabled { opacity: 0.65; cursor: not-allowed; }
+
+    .otp-verify-panel {
+      margin-top: 12px;
+      background: linear-gradient(135deg, rgba(33,150,243,0.06), rgba(76,175,80,0.06));
+      border: 1.5px solid rgba(33,150,243,0.22);
+      border-radius: var(--radius-sm, 10px);
+      padding: 14px;
+      animation: otpPanelIn 0.4s cubic-bezier(0.34,1.2,0.64,1);
+    }
+    @keyframes otpPanelIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .otp-info-msg {
+      font-size: 0.80rem; color: var(--accent2-dark, #1565C0);
+      margin-bottom: 10px; font-weight: 600;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .otp-input-row {
+      display: flex; gap: 8px; margin-bottom: 8px;
+    }
+    .otp-code-input {
+      letter-spacing: 0.25em; font-size: 1.1rem !important;
+      font-weight: 800 !important; text-align: center;
+      flex: 1;
+    }
+    .btn-verify-otp {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 10px 16px; border-radius: var(--radius-sm, 10px);
+      font-size: 0.82rem; font-weight: 700;
+      background: linear-gradient(135deg, var(--accent, #4CAF50), var(--accent-dark, #388E3C));
+      color: white; border: none; cursor: pointer; white-space: nowrap;
+      transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+      font-family: var(--font-body, 'Plus Jakarta Sans', sans-serif);
+      flex-shrink: 0;
+    }
+    .btn-verify-otp:hover:not(:disabled) {
+      transform: translateY(-2px); box-shadow: 0 6px 18px rgba(76,175,80,0.35);
+    }
+    .btn-verify-otp:disabled { opacity: 0.65; cursor: not-allowed; }
+    .otp-resend-row {
+      display: flex; align-items: center; gap: 10px; font-size: 0.78rem;
+    }
+    .otp-timer { color: var(--text-muted, #6b7280); font-weight: 600; }
+    .otp-resend-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: none; border: 1px solid rgba(33,150,243,0.35);
+      color: var(--accent2, #2196F3); font-size: 0.78rem; font-weight: 700;
+      padding: 4px 12px; border-radius: 50px; cursor: pointer;
+      transition: all 0.25s ease; font-family: var(--font-body, 'Plus Jakarta Sans', sans-serif);
+    }
+    .otp-resend-btn:hover:not(:disabled) { background: rgba(33,150,243,0.08); }
+    .otp-verified-badge {
+      display: flex; align-items: center; gap: 6px;
+      background: rgba(76,175,80,0.10); border: 1px solid rgba(76,175,80,0.28);
+      color: var(--accent-dark, #388E3C); font-size: 0.82rem; font-weight: 700;
+      padding: 8px 14px; border-radius: var(--radius-sm, 10px); margin-top: 8px;
+      animation: verifiedIn 0.45s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    @keyframes verifiedIn {
+      from { transform: scale(0.88); opacity: 0; }
+      to   { transform: scale(1); opacity: 1; }
+    }
+    .otp-verified-badge i { color: var(--accent, #4CAF50); font-size: 1rem; }
+
+    /* Dark theme overrides for Student/Teacher portals */
+    .tc-page .otp-verify-panel,
+    body[data-dark] .otp-verify-panel,
+    .sp-glass .otp-verify-panel {
+      background: rgba(0,245,212,0.06); border-color: rgba(0,245,212,0.22);
+    }
+    .tc-page .otp-info-msg { color: #60a5fa; }
+    .tc-page .otp-verified-badge {
+      background: rgba(0,245,212,0.10); border-color: rgba(0,245,212,0.28); color: #a7f3d0;
+    }
+
+    /* Email verified state — lock icon on input */
+    .form-input[readonly].verified-email {
+      background: rgba(76,175,80,0.06); border-color: rgba(76,175,80,0.35);
+    }
+  `
+  document.head.appendChild(style)
+}
+
 /* ── STICKY HEADER + SCROLL PROGRESS + BACK-TO-TOP ─────────── */
 export function initStickyHeader() {
+  _injectOtpStyles()
   const header = document.querySelector('.site-header')
   if (!header) return
 
@@ -61,7 +404,7 @@ export function initStickyHeader() {
     if (btt) btt.classList.toggle('visible', scrolled > 400)
   }
 
-  onScroll() // run immediately
+  onScroll()
   window.addEventListener('scroll', onScroll, { passive: true })
 }
 
@@ -114,7 +457,7 @@ export function initScrollAnimations() {
   els.forEach(el => observer.observe(el))
 }
 
-/* ── COUNTER ANIMATION (fixed: decimal + percent support) ────── */
+/* ── COUNTER ANIMATION ────────────────────────────────────────── */
 export function animateCounter(el) {
   const target    = parseFloat(el.dataset.target)
   if (isNaN(target)) return
@@ -131,10 +474,10 @@ export function animateCounter(el) {
 
   const tick = (now) => {
     const progress = Math.min((now - startTime) / duration, 1)
-    const eased    = 1 - Math.pow(1 - progress, 3) // ease-out cubic
+    const eased    = 1 - Math.pow(1 - progress, 3)
     el.textContent = fmt(target * eased)
     if (progress < 1) requestAnimationFrame(tick)
-    else el.textContent = fmt(target) // exact final value
+    else el.textContent = fmt(target)
   }
 
   requestAnimationFrame(tick)
@@ -195,15 +538,10 @@ export function initModalCloseHandlers() {
 }
 
 /* ── PASSWORD TOGGLE ─────────────────────────────────────────── */
-// Call this after injecting any form containing .pw-toggle-wrap elements.
-// Wrapping: <div class="pw-toggle-wrap">
-//             <input type="password" class="form-input" .../>
-//             <button type="button" class="pw-eye-btn"><i class="fas fa-eye"></i></button>
-//           </div>
 export function initPasswordToggles(container) {
   const scope = container || document
   scope.querySelectorAll('.pw-toggle-wrap').forEach(wrap => {
-    if (wrap.dataset.pwInit) return   // prevent double-binding
+    if (wrap.dataset.pwInit) return
     wrap.dataset.pwInit = '1'
     const inp = wrap.querySelector('input')
     const btn = wrap.querySelector('.pw-eye-btn')
@@ -232,6 +570,7 @@ export function getCurrentUser() { return _currentUser }
 export function getUserProfile() { return _userProfile }
 
 export async function initAuth() {
+  _injectOtpStyles()
   if (!document.getElementById('globalAuthModal')) {
     document.body.insertAdjacentHTML('beforeend', _authModalHTML())
   }
@@ -240,7 +579,6 @@ export async function initAuth() {
     const { data: { session } } = await supabase.auth.getSession()
     if (session?.user) {
       _currentUser = session.user
-      // ⚡ Non-blocking — fetch profile in background, don't freeze UI
       supabase
         .from('login_information')
         .select('*')
@@ -262,7 +600,6 @@ export async function initAuth() {
   supabase.auth.onAuthStateChange((_event, session) => {
     if (session?.user) {
       _currentUser = session.user
-      // ⚡ Non-blocking profile fetch on every auth state change
       supabase
         .from('login_information')
         .select('*')
@@ -302,7 +639,32 @@ function _authModalHTML() {
           <form id="globalLoginForm" novalidate>
             <div class="form-group">
               <label class="form-label"><i class="fas fa-envelope"></i> Email</label>
-              <input type="email" id="loginEmail" class="form-input" placeholder="your@email.com" required autocomplete="email"/>
+              <div class="otp-email-row">
+                <input type="email" id="loginEmail" class="form-input" placeholder="your@email.com" required autocomplete="email"/>
+                <button type="button" class="btn-send-otp" id="login_otp_sendBtn" onclick="pdkvSendOtp('loginEmail','login_otp')">
+                  <i class="fas fa-paper-plane"></i> Send OTP
+                </button>
+              </div>
+              <div id="login_otp" class="otp-verify-panel" style="display:none;">
+                <div class="otp-info-msg"><i class="fas fa-info-circle"></i> A 6-digit OTP has been sent to your email.</div>
+                <div class="otp-input-row">
+                  <input type="text" id="login_otp_code" class="form-input otp-code-input"
+                    placeholder="Enter 6-digit OTP" maxlength="6" autocomplete="one-time-code"
+                    oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
+                  <button type="button" class="btn-verify-otp" id="login_otp_verifyBtn" onclick="pdkvVerifyOtp('loginEmail','login_otp')">
+                    <i class="fas fa-shield-check"></i> Verify
+                  </button>
+                </div>
+                <div class="otp-resend-row">
+                  <span class="otp-timer" id="login_otp_timer"></span>
+                  <button type="button" class="otp-resend-btn" id="login_otp_resendBtn" onclick="pdkvResendOtp('loginEmail','login_otp')" style="display:none;">
+                    <i class="fas fa-redo"></i> Resend OTP
+                  </button>
+                </div>
+                <div class="otp-verified-badge" id="login_otp_badge" style="display:none;">
+                  <i class="fas fa-check-circle"></i> Email Verified!
+                </div>
+              </div>
             </div>
             <div class="form-group">
               <label class="form-label"><i class="fas fa-lock"></i> Password</label>
@@ -310,6 +672,9 @@ function _authModalHTML() {
                 <input type="password" id="loginPassword" class="form-input" placeholder="••••••••" required autocomplete="current-password"/>
                 <button type="button" class="pw-eye-btn" title="Show password"><i class="fas fa-eye"></i></button>
               </div>
+            </div>
+            <div id="loginEmailVerifyNote" class="otp-info-msg" style="display:none;margin-bottom:8px;color:#e65100;background:rgba(255,152,0,0.08);border-radius:8px;padding:8px 12px;">
+              <i class="fas fa-exclamation-triangle"></i> Please verify your email with OTP before signing in.
             </div>
             <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:10px;" id="loginSubmitBtn">
               <i class="fas fa-sign-in-alt"></i> Sign In
@@ -329,7 +694,6 @@ function _authModalHTML() {
                 <i class="fas fa-id-card"></i> Register Number
                 <span style="font-weight:400;opacity:0.55;font-size:0.76rem;">(optional)</span>
               </label>
-              <!-- ✏️ NOT required — user can leave blank -->
               <input type="text" id="signupRegno" class="form-input" placeholder="e.g. 22CS0001"/>
             </div>
             <div class="form-group">
@@ -345,9 +709,35 @@ function _authModalHTML() {
                 <option value="Other">Other</option>
               </select>
             </div>
+            <!-- Email with OTP verification for signup -->
             <div class="form-group">
               <label class="form-label"><i class="fas fa-envelope"></i> Email *</label>
-              <input type="email" id="signupEmail" class="form-input" placeholder="your@email.com" required autocomplete="email"/>
+              <div class="otp-email-row">
+                <input type="email" id="signupEmail" class="form-input" placeholder="your@email.com" required autocomplete="email"/>
+                <button type="button" class="btn-send-otp" id="signup_otp_sendBtn" onclick="pdkvSendOtp('signupEmail','signup_otp')">
+                  <i class="fas fa-paper-plane"></i> Send OTP
+                </button>
+              </div>
+              <div id="signup_otp" class="otp-verify-panel" style="display:none;">
+                <div class="otp-info-msg"><i class="fas fa-info-circle"></i> A 6-digit OTP has been sent to your email.</div>
+                <div class="otp-input-row">
+                  <input type="text" id="signup_otp_code" class="form-input otp-code-input"
+                    placeholder="Enter 6-digit OTP" maxlength="6" autocomplete="one-time-code"
+                    oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
+                  <button type="button" class="btn-verify-otp" id="signup_otp_verifyBtn" onclick="pdkvVerifyOtp('signupEmail','signup_otp')">
+                    <i class="fas fa-shield-check"></i> Verify
+                  </button>
+                </div>
+                <div class="otp-resend-row">
+                  <span class="otp-timer" id="signup_otp_timer"></span>
+                  <button type="button" class="otp-resend-btn" id="signup_otp_resendBtn" onclick="pdkvResendOtp('signupEmail','signup_otp')" style="display:none;">
+                    <i class="fas fa-redo"></i> Resend OTP
+                  </button>
+                </div>
+                <div class="otp-verified-badge" id="signup_otp_badge" style="display:none;">
+                  <i class="fas fa-check-circle"></i> Email Verified!
+                </div>
+              </div>
             </div>
             <div class="form-group">
               <label class="form-label"><i class="fas fa-lock"></i> Password (min 6 chars) *</label>
@@ -355,6 +745,9 @@ function _authModalHTML() {
                 <input type="password" id="signupPassword" class="form-input" placeholder="••••••••" required minlength="6" autocomplete="new-password"/>
                 <button type="button" class="pw-eye-btn" title="Show password"><i class="fas fa-eye"></i></button>
               </div>
+            </div>
+            <div id="signupEmailVerifyNote" class="otp-info-msg" style="display:none;margin-bottom:8px;color:#e65100;background:rgba(255,152,0,0.08);border-radius:8px;padding:8px 12px;">
+              <i class="fas fa-exclamation-triangle"></i> Please verify your email with OTP before creating account.
             </div>
             <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:10px;" id="signupSubmitBtn">
               <i class="fas fa-user-plus"></i> Create Account
@@ -381,49 +774,121 @@ function _wireAuthForms() {
     })
   })
 
-  // 👁 Wire password show/hide for both login & signup
   initPasswordToggles(document.getElementById('globalAuthModal'))
 
   // ── LOGIN ──
+  // When OTP is verified for login, Supabase already creates/logs in the session
+  // We then just need to fetch the profile and close
+  document.addEventListener('pdkv:emailVerified', async (ev) => {
+    const { fieldId } = ev.detail
+    // If login email was verified, auto-complete sign in
+    if (fieldId === 'loginEmail') {
+      const email = document.getElementById('loginEmail')?.value?.trim()
+      if (!email) return
+      const loginNote = document.getElementById('loginEmailVerifyNote')
+      if (loginNote) loginNote.style.display = 'none'
+
+      // Check if we have an active session from OTP verification
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) {
+        _currentUser = session.user
+        // Fetch or create profile
+        const { data: profile } = await supabase.from('login_information')
+          .select('*').eq('id', _currentUser.id).maybeSingle()
+
+        if (!profile) {
+          // New user — need password set. Show password field.
+          showToast('Email verified! Please enter a password to complete sign-in.', 'info', 5000)
+        } else {
+          _userProfile = profile
+          showToast('Signed in successfully! 👋', 'success')
+          closeModal('globalAuthModal')
+          updateHeaderAuthUI()
+          _notify()
+        }
+      }
+    }
+  })
+
   document.getElementById('globalLoginForm')?.addEventListener('submit', async (e) => {
     e.preventDefault()
-    const btn      = document.getElementById('loginSubmitBtn')
     const email    = document.getElementById('loginEmail')?.value.trim()
     const password = document.getElementById('loginPassword')?.value
+    const note     = document.getElementById('loginEmailVerifyNote')
+
     if (!email || !password) { showToast('Please enter email and password.', 'warning'); return }
 
+    // Require OTP verification
+    if (!isEmailOtpVerified(email)) {
+      if (note) note.style.display = 'flex'
+      showToast('Please verify your email with OTP first.', 'warning')
+      document.getElementById('login_otp_sendBtn')?.focus()
+      return
+    }
+    if (note) note.style.display = 'none'
+
+    const btn = document.getElementById('loginSubmitBtn')
     btn.disabled = true
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing In…'
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    // Since OTP verification already signs in the user via Supabase,
+    // try updating password if provided (for new users) or just confirm session
+    const { data: { session } } = await supabase.auth.getSession()
+
+    let signInOk = false
+
+    if (session?.user) {
+      // Already signed in via OTP — update password if needed
+      const { error: pwErr } = await supabase.auth.updateUser({ password })
+      if (!pwErr) signInOk = true
+      else {
+        // Password update failed — try traditional sign in
+        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        signInOk = !error
+        if (!signInOk) { showToast(error.message, 'error') }
+      }
+    } else {
+      // No session from OTP — try password sign in
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      signInOk = !error
+      if (!signInOk) { showToast(error.message, 'error') }
+    }
 
     btn.disabled = false
     btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In'
 
-    if (error) { showToast(error.message, 'error'); return }
+    if (!signInOk) return
+
+    // Save to login_information
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await supabase.from('login_information').upsert(
+        { id: user.id, email, last_login: new Date().toISOString() },
+        { onConflict: 'id' }
+      )
+    }
 
     showToast('Welcome back! 👋', 'success')
     closeModal('globalAuthModal')
+    clearOtpState(email)
     document.getElementById('globalLoginForm').reset()
-    // Reset password field visibility
-    const pwInp = document.getElementById('loginPassword')
-    if (pwInp) pwInp.type = 'password'
-    const eyeBtn = document.querySelector('#loginPanel .pw-eye-btn')
-    if (eyeBtn) eyeBtn.innerHTML = '<i class="fas fa-eye"></i>'
+    document.getElementById('login_otp').style.display = 'none'
+    document.getElementById('loginEmail').readOnly = false
+    const loginBadge = document.getElementById('login_otp_badge')
+    if (loginBadge) loginBadge.style.display = 'none'
   })
 
   // ── SIGNUP ──
   document.getElementById('globalSignupForm')?.addEventListener('submit', async (e) => {
     e.preventDefault()
-    const btn      = document.getElementById('signupSubmitBtn')
     const name     = document.getElementById('signupName')?.value.trim()
-    const regno    = document.getElementById('signupRegno')?.value.trim() || '' // ✏️ optional
+    const regno    = document.getElementById('signupRegno')?.value.trim() || ''
     const phone    = document.getElementById('signupPhone')?.value.trim()
     const gender   = document.getElementById('signupGender')?.value
     const email    = document.getElementById('signupEmail')?.value.trim()
     const password = document.getElementById('signupPassword')?.value
+    const note     = document.getElementById('signupEmailVerifyNote')
 
-    // regno removed from required check — it is optional
     if (!name || !phone || !gender || !email || !password) {
       showToast('Fill all required fields.', 'warning'); return
     }
@@ -431,31 +896,55 @@ function _wireAuthForms() {
       showToast('Password must be at least 6 characters.', 'warning'); return
     }
 
+    // Require OTP verification
+    if (!isEmailOtpVerified(email)) {
+      if (note) note.style.display = 'flex'
+      showToast('Please verify your email with OTP first.', 'warning')
+      document.getElementById('signup_otp_sendBtn')?.focus()
+      return
+    }
+    if (note) note.style.display = 'none'
+
+    const btn = document.getElementById('signupSubmitBtn')
     btn.disabled = true
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating…'
 
-    const { data, error } = await supabase.auth.signUp({ email, password })
+    // OTP already created user — update password
+    const { data: { session } } = await supabase.auth.getSession()
+    let userId = session?.user?.id
+
+    if (session?.user) {
+      await supabase.auth.updateUser({ password })
+    } else {
+      const { data, error } = await supabase.auth.signUp({ email, password })
+      if (error) {
+        showToast(error.message, 'error')
+        btn.disabled = false; btn.innerHTML = '<i class="fas fa-user-plus"></i> Create Account'
+        return
+      }
+      userId = data.user?.id
+    }
+
+    // Save full profile to login_information
+    if (userId) {
+      await supabase.from('login_information').upsert({
+        id: userId, name, regno, phone, gender, email,
+        created_at: new Date().toISOString(),
+        last_login: new Date().toISOString()
+      }, { onConflict: 'id' })
+    }
 
     btn.disabled = false
     btn.innerHTML = '<i class="fas fa-user-plus"></i> Create Account'
 
-    if (error) { showToast(error.message, 'error'); return }
-
-    // ⚡ Save profile in background — don't block the modal close
-    if (data.user) {
-      supabase.from('login_information')
-        .upsert({ id: data.user.id, name, regno, phone, gender, email })
-        .catch(() => {})
-    }
-
-    showToast('Account created! Check your email to verify. 🎉', 'success')
+    showToast('Account created successfully! 🎉', 'success')
     closeModal('globalAuthModal')
+    clearOtpState(email)
     document.getElementById('globalSignupForm').reset()
-    // Reset password field visibility
-    const pwInp = document.getElementById('signupPassword')
-    if (pwInp) pwInp.type = 'password'
-    const eyeBtn = document.querySelector('#signupPanel .pw-eye-btn')
-    if (eyeBtn) eyeBtn.innerHTML = '<i class="fas fa-eye"></i>'
+    document.getElementById('signup_otp').style.display = 'none'
+    document.getElementById('signupEmail').readOnly = false
+    const signupBadge = document.getElementById('signup_otp_badge')
+    if (signupBadge) signupBadge.style.display = 'none'
   })
 }
 
@@ -580,20 +1069,15 @@ export function initPageTransitions() {
 /* ── UTILS ───────────────────────────────────────────────────── */
 export function formatNumber(n) { return Number(n).toLocaleString('en-IN') }
 
-/* ── PHOTO UPLOAD — fast, instant preview, cache-busted ──────── */
-// Usage in Student.js / Teacher.js:
-//   const url = await uploadProfilePhoto(file, 'image_files', `avatars/${userId}.jpg`, ['.st-av', '#profileImg'])
-//
+/* ── FAST PROFILE PHOTO UPLOAD ───────────────────────────────── */
 export async function uploadProfilePhoto(file, bucket, storagePath, imgSelectors = []) {
   if (!file) return null
 
-  // 🖼 Show instant local preview immediately — no waiting for upload
   const localUrl = URL.createObjectURL(file)
   imgSelectors.forEach(sel => {
     document.querySelectorAll(sel).forEach(img => { img.src = localUrl })
   })
 
-  // ⚡ Compress images > 1 MB before uploading to keep it fast
   let uploadFile = file
   if (file.size > 1_000_000 && file.type.startsWith('image/')) {
     try { uploadFile = await _compressImage(file, 800, 0.82) } catch (_) {}
@@ -611,10 +1095,8 @@ export async function uploadProfilePhoto(file, bucket, storagePath, imgSelectors
   }
 
   const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(storagePath)
-  // 🔄 Cache-buster — forces browser to load new image even if URL looks same
   const finalUrl = `${publicUrl}?t=${Date.now()}`
 
-  // Update every matching image element in the DOM immediately
   imgSelectors.forEach(sel => {
     document.querySelectorAll(sel).forEach(img => { img.src = finalUrl })
   })
@@ -622,7 +1104,6 @@ export async function uploadProfilePhoto(file, bucket, storagePath, imgSelectors
   return finalUrl
 }
 
-// Internal image compressor using canvas
 function _compressImage(file, maxDim, quality) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -648,22 +1129,7 @@ function _compressImage(file, maxDim, quality) {
   })
 }
 
-/* ── FAST PROFILE SAVE ───────────────────────────────────────── */
-// Runs photo upload + DB upsert in PARALLEL using Promise.all()
-// for maximum speed. Calls onSuccess(photoUrl) when done.
-//
-// Usage:
-//   await saveProfile({
-//     userId: user.id,
-//     fields: { name, phone, regno, ... },
-//     photoFile: fileInputEl.files[0],          // optional
-//     photoBucket: 'image_files',
-//     photoPathFn: (id) => `avatars/${id}.jpg`,
-//     photoImgSelectors: ['.st-av', '#myPhoto'],
-//     onSuccess: (url) => showToast('Saved! ✅', 'success'),
-//     onError:   (err) => showToast(err.message, 'error')
-//   })
-//
+/* ── SAVE PROFILE ────────────────────────────────────────────── */
 export async function saveProfile({
   userId,
   fields,
@@ -678,8 +1144,6 @@ export async function saveProfile({
 
   if (photoFile) {
     const path = photoPathFn(userId)
-
-    // ⚡ PARALLEL: upload photo + save other fields at the same time
     const [photoUrl, { error: dbErr }] = await Promise.all([
       uploadProfilePhoto(photoFile, photoBucket, path, photoImgSelectors),
       supabase.from('login_information').upsert({ id: userId, ...fields })
@@ -691,7 +1155,6 @@ export async function saveProfile({
       return false
     }
 
-    // Patch photo_url in background after both complete
     if (photoUrl) {
       supabase.from('login_information')
         .update({ photo_url: photoUrl })
@@ -701,7 +1164,6 @@ export async function saveProfile({
 
     onSuccess?.(photoUrl)
   } else {
-    // No photo — single fast upsert
     const { error } = await supabase
       .from('login_information')
       .upsert({ id: userId, ...fields })
