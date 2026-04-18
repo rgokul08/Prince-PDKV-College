@@ -1,4 +1,3 @@
-
 import { supabase } from './supabaseClient.js'
 import {
   initStickyHeader, initHamburger,
@@ -30,6 +29,8 @@ const _selStu = new Set()
 let _attSt   = {}
 let _attStus = []
 let _rtCh    = null
+// FIX 1: declare _roomsRtCh at module level so setupRoomsRealtime() can reference it
+let _roomsRtCh = null
 
 // ── BOOT ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -133,20 +134,19 @@ function clearMsg() { const e = document.getElementById('loginMsg'); if (e) e.st
 window.tcLogout = () => {
   sessionStorage.removeItem(SESS_KEY); _regno = null; _profile = null
   if (_rtCh) { supabase.removeChannel(_rtCh); _rtCh = null }
+  // FIX 1: clean up rooms realtime channel on logout
+  if (_roomsRtCh) { supabase.removeChannel(_roomsRtCh); _roomsRtCh = null }
   showSec('login')
   showToast('Logged out.', 'info')
 }
 
 // ── IMAGE UPLOAD ──────────────────────────────────────────────
-// Always uploads to image_files/Teacher_images/<regno>.<ext>
-// Returns the public URL with cache-buster
 async function uploadTeacherImg(fileInputId, regno) {
   const inp = document.getElementById(fileInputId)
   const f   = inp?.files?.[0]
   if (!f) return null
 
   const ext  = f.name.split('.').pop().toLowerCase() || 'jpg'
-  // Stable filename: regno.ext — upsert always overwrites the same file
   const storagePath = `${TCH_FOLD}/${regno}.${ext}`
 
   const { error } = await supabase.storage
@@ -162,7 +162,6 @@ async function uploadTeacherImg(fileInputId, regno) {
   return publicUrl + '?t=' + Date.now()
 }
 
-// Fallback: search bucket for any file matching the regno prefix
 async function findTeacherPhotoInBucket(regno) {
   try {
     const { data: files, error } = await supabase.storage
@@ -218,6 +217,128 @@ async function loadPortal(regno) {
   }
 }
 
+// ══════════════════════════════════════════════════════════════
+// FIX 2: OTP email verification before saving teacher_information
+// ══════════════════════════════════════════════════════════════
+
+// Send a 6-digit OTP to the given email via Supabase
+async function sendEmailOTP(email) {
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: false }
+  })
+  return error
+}
+
+// Verify the OTP token the teacher types
+async function verifyEmailOTP(email, token) {
+  const { error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: 'email'
+  })
+  return error
+}
+
+// Inject OTP block into the form; calls onVerified() after successful verification
+function showOTPStep(email, onVerified) {
+  document.getElementById('otpBlock')?.remove()
+
+  const block = document.createElement('div')
+  block.id = 'otpBlock'
+  block.innerHTML = `
+    <div style="
+      background:rgba(245,158,11,0.08);
+      border:1.5px solid rgba(245,158,11,0.30);
+      border-radius:14px;
+      padding:22px 20px;
+      margin-top:16px;
+      animation:tcMsgIn .4s ease both;
+    ">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px;">
+        <div style="width:38px;height:38px;border-radius:50%;background:rgba(245,158,11,0.15);display:flex;align-items:center;justify-content:center;color:var(--tc-amber);font-size:1.1rem;">
+          <i class="fas fa-envelope-open-text"></i>
+        </div>
+        <div>
+          <div style="font-weight:800;font-size:.94rem;color:#fff;">Verify Your Email</div>
+          <div style="font-size:.78rem;color:var(--tc-muted);">A 6-digit OTP was sent to <strong style="color:var(--tc-amber)">${esc(email)}</strong></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+        <div style="flex:1;min-width:160px;">
+          <label class="tl" style="margin-bottom:7px;"><i class="fas fa-key"></i> Enter OTP</label>
+          <input
+            id="otpInput"
+            class="ti"
+            type="text"
+            inputmode="numeric"
+            maxlength="6"
+            placeholder="e.g. 123456"
+            style="letter-spacing:.22em;font-size:1.1rem;font-weight:800;text-align:center;"
+          />
+        </div>
+        <button type="button" id="otpVerifyBtn" class="tb tb-pri" style="height:46px;padding:0 22px;white-space:nowrap;">
+          <i class="fas fa-check-circle"></i> Verify OTP
+        </button>
+        <button type="button" id="otpResendBtn" class="tb tb-ghost tb-sm" style="height:46px;">
+          <i class="fas fa-redo"></i> Resend
+        </button>
+      </div>
+      <div id="otpMsg" style="margin-top:10px;font-size:.82rem;"></div>
+    </div>`
+
+  const setupBtn = document.getElementById('setupBtn')
+  if (setupBtn) setupBtn.parentNode.insertBefore(block, setupBtn.nextSibling)
+
+  document.getElementById('otpVerifyBtn')?.addEventListener('click', async () => {
+    const token  = document.getElementById('otpInput')?.value?.trim()
+    const msgEl  = document.getElementById('otpMsg')
+    const verBtn = document.getElementById('otpVerifyBtn')
+
+    if (!token || token.length < 6) {
+      if (msgEl) msgEl.innerHTML = '<span style="color:#fca5a5;"><i class="fas fa-exclamation-circle"></i> Please enter the 6-digit OTP.</span>'
+      return
+    }
+
+    verBtn.disabled = true
+    verBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying…'
+
+    const err = await verifyEmailOTP(email, token)
+    if (err) {
+      verBtn.disabled = false
+      verBtn.innerHTML = '<i class="fas fa-check-circle"></i> Verify OTP'
+      if (msgEl) msgEl.innerHTML = `<span style="color:#fca5a5;"><i class="fas fa-times-circle"></i> ${esc(err.message || 'Invalid OTP. Please try again.')}</span>`
+      return
+    }
+
+    // Verified ✅
+    block.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;padding:14px 16px;background:rgba(52,211,153,.10);border:1px solid rgba(52,211,153,.28);border-radius:12px;">
+        <i class="fas fa-check-circle" style="color:var(--tc-green);font-size:1.3rem;"></i>
+        <span style="font-weight:700;color:#6ee7b7;">Email verified! Saving your profile…</span>
+      </div>`
+
+    onVerified()
+  })
+
+  document.getElementById('otpResendBtn')?.addEventListener('click', async () => {
+    const resBtn = document.getElementById('otpResendBtn')
+    const msgEl  = document.getElementById('otpMsg')
+    resBtn.disabled = true
+    resBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'
+    const err = await sendEmailOTP(email)
+    resBtn.disabled = false
+    resBtn.innerHTML = '<i class="fas fa-redo"></i> Resend'
+    if (err) {
+      if (msgEl) msgEl.innerHTML = `<span style="color:#fca5a5;"><i class="fas fa-times-circle"></i> ${esc(err.message)}</span>`
+    } else {
+      if (msgEl) msgEl.innerHTML = '<span style="color:#6ee7b7;"><i class="fas fa-check-circle"></i> OTP resent! Check your inbox.</span>'
+    }
+  })
+
+  setTimeout(() => document.getElementById('otpInput')?.focus(), 120)
+}
+
 // ── SETUP FORM ────────────────────────────────────────────────
 async function renderSetup(regno, existingData) {
   if (existingData === undefined) {
@@ -229,6 +350,9 @@ async function renderSetup(regno, existingData) {
   const isEdit = !!existingData
   const d      = existingData || {}
   const c      = document.getElementById('secSetup'); if (!c) return
+
+  // FIX 2: capture existing email to detect changes
+  const existingEmail = (d.email || '').toLowerCase()
 
   const dO  = DEPTS.map(dep  => `<option ${d.department === dep  ? 'selected' : ''}>${dep}</option>`).join('')
   const dsO = DESIGS.map(des => `<option ${d.designation === des ? 'selected' : ''}>${des}</option>`).join('')
@@ -249,8 +373,14 @@ async function renderSetup(regno, existingData) {
             <input class="ti" value="${esc(regno)}" readonly /></div>
           <div class="tg-fg"><label class="tl"><i class="fas fa-user"></i> Full Name *</label>
             <input id="f_name" class="ti" value="${esc(d.name||'')}" placeholder="Dr. / Mr. / Ms. Full Name" required /></div>
-          <div class="tg-fg"><label class="tl"><i class="fas fa-envelope"></i> Email *</label>
-            <input id="f_email" type="email" class="ti" value="${esc(d.email||'')}" placeholder="your@email.com" required /></div>
+          <div class="tg-fg">
+            <label class="tl"><i class="fas fa-envelope"></i> Email *
+              <span style="font-size:.70rem;color:var(--tc-amber);font-weight:400;text-transform:none;">
+                ${isEdit ? '(OTP needed if changed)' : '— OTP verification required'}
+              </span>
+            </label>
+            <input id="f_email" type="email" class="ti" value="${esc(d.email||'')}" placeholder="your@email.com" required />
+          </div>
           <div class="tg-fg"><label class="tl"><i class="fas fa-phone"></i> Phone *</label>
             <input id="f_phone" type="tel" class="ti" value="${esc(d.phone||'')}" placeholder="+91 99999 99999" required /></div>
           <div class="tg-fg"><label class="tl"><i class="fas fa-venus-mars"></i> Gender *</label>
@@ -306,8 +436,6 @@ async function renderSetup(regno, existingData) {
 
   document.getElementById('setupForm').addEventListener('submit', async ev => {
     ev.preventDefault()
-    const btn = document.getElementById('setupBtn')
-    btn.disabled = true; btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${isEdit ? 'Updating…' : 'Saving…'}`
 
     const g = id => document.getElementById(id)?.value?.trim() || null
     const name  = g('f_name'); const email = g('f_email')
@@ -315,51 +443,111 @@ async function renderSetup(regno, existingData) {
     const dept  = g('f_dept');  const desig  = g('f_desig'); const qual = g('f_qual')
 
     if (!name || !email || !phone || !gender || !dept || !desig || !qual) {
-      showToast('Fill required fields (*)', 'warning')
-      btn.disabled = false; btn.innerHTML = `<i class="fas fa-save"></i> ${isEdit ? 'Update My Profile' : 'Save My Profile'}`; return
+      showToast('Fill required fields (*)', 'warning'); return
     }
 
-    // --- CRITICAL: Always try to upload if a file was selected ---
-    let imgUrl = d.image_url || null
-    const fileInput = document.getElementById('f_img')
-    if (fileInput?.files?.[0]) {
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading photo…'
-      const newUrl = await uploadTeacherImg('f_img', regno)
-      if (newUrl) {
-        imgUrl = newUrl
-        showToast('Photo uploaded successfully!', 'success')
+    // FIX 2: require OTP for new profile OR when email address has changed
+    const emailChanged = email.toLowerCase() !== existingEmail
+    const needsOTP     = !isEdit || emailChanged
+
+    if (needsOTP) {
+      const btn = document.getElementById('setupBtn')
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending OTP…' }
+
+      const otpErr = await sendEmailOTP(email)
+
+      if (btn) { btn.disabled = false; btn.innerHTML = `<i class="fas fa-save"></i> ${isEdit ? 'Update My Profile' : 'Save My Profile'}` }
+
+      if (otpErr) {
+        showToast('Failed to send OTP: ' + otpErr.message, 'error')
+        return
       }
+
+      showToast(`OTP sent to ${email}! Check your inbox.`, 'success')
+
+      // Snapshot all field values now — used inside the async callback
+      const snap = {
+        name, email, phone, gender, dept, desig, qual,
+        exp:      g('f_exp'),
+        spec:     g('f_spec'),
+        empid:    g('f_empid'),
+        subjects: g('f_subjects'),
+        joining:  g('f_joining'),
+        addr:     g('f_addr'),
+        existingImgUrl: d.image_url || null
+      }
+
+      showOTPStep(email, () => doActualSave(regno, snap, isEdit))
+      return
     }
 
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving profile…'
-
-    const { error } = await supabase.from('teacher_information').upsert({
-      register_no: regno, name, email, phone, gender,
-      department:     dept, designation: desig, qualification: qual,
-      experience:     g('f_exp'),     specialization: g('f_spec'),
-      employee_id:    g('f_empid'),   subjects:        g('f_subjects'),
-      joining_date:   g('f_joining'), address:         g('f_addr'),
-      image_url: imgUrl, updated_at: new Date().toISOString()
-    }, { onConflict: 'register_no' })
-
-    btn.disabled = false; btn.innerHTML = `<i class="fas fa-save"></i> ${isEdit ? 'Update My Profile' : 'Save My Profile'}`
-
-    if (error) { showToast('Save failed: ' + error.message, 'error'); return }
-
-    showToast(isEdit ? 'Profile updated! ✅' : 'Profile saved! 🎉', 'success')
-
-    // Re-fetch fresh data from DB
-    const { data: t } = await supabase.from('teacher_information')
-      .select('*').ilike('register_no', regno).maybeSingle()
-
-    if (t) {
-      // Inject the fresh imgUrl so profile renders with new photo immediately
-      if (imgUrl) t.image_url = imgUrl
-      _profile = t
-      showSec('profile')
-      await renderProfile(t)
+    // Email unchanged on edit → save directly without OTP
+    const snap = {
+      name, email, phone, gender, dept, desig, qual,
+      exp:      g('f_exp'),
+      spec:     g('f_spec'),
+      empid:    g('f_empid'),
+      subjects: g('f_subjects'),
+      joining:  g('f_joining'),
+      addr:     g('f_addr'),
+      existingImgUrl: d.image_url || null
     }
+    await doActualSave(regno, snap, isEdit)
   })
+}
+
+// ── ACTUAL DB SAVE (after OTP pass, or email-unchanged edit) ──
+async function doActualSave(regno, snap, isEdit) {
+  const btn = document.getElementById('setupBtn')
+  if (btn) { btn.disabled = true; btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${isEdit ? 'Updating…' : 'Saving…'}` }
+
+  let imgUrl = snap.existingImgUrl
+  const fileInput = document.getElementById('f_img')
+  if (fileInput?.files?.[0]) {
+    if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading photo…'
+    const newUrl = await uploadTeacherImg('f_img', regno)
+    if (newUrl) {
+      imgUrl = newUrl
+      showToast('Photo uploaded successfully!', 'success')
+    }
+  }
+
+  if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving profile…'
+
+  const { error } = await supabase.from('teacher_information').upsert({
+    register_no:    regno,
+    name:           snap.name,
+    email:          snap.email,
+    phone:          snap.phone,
+    gender:         snap.gender,
+    department:     snap.dept,
+    designation:    snap.desig,
+    qualification:  snap.qual,
+    experience:     snap.exp      || null,
+    specialization: snap.spec     || null,
+    employee_id:    snap.empid    || null,
+    subjects:       snap.subjects || null,
+    joining_date:   snap.joining  || null,
+    address:        snap.addr     || null,
+    image_url:      imgUrl,
+    updated_at:     new Date().toISOString()
+  }, { onConflict: 'register_no' })
+
+  if (btn) { btn.disabled = false; btn.innerHTML = `<i class="fas fa-save"></i> ${isEdit ? 'Update My Profile' : 'Save My Profile'}` }
+
+  if (error) { showToast('Save failed: ' + error.message, 'error'); return }
+
+  showToast(isEdit ? 'Profile updated! ✅' : 'Profile saved! 🎉', 'success')
+
+  const { data: t } = await supabase.from('teacher_information')
+    .select('*').ilike('register_no', regno).maybeSingle()
+
+  if (t) {
+    if (imgUrl) t.image_url = imgUrl
+    _profile = t
+    showSec('profile')
+    await renderProfile(t)
+  }
 }
 
 // ── EDIT / CANCEL ─────────────────────────────────────────────
@@ -380,7 +568,6 @@ async function renderProfile(t) {
 
   const fallbackPhoto = `https://ui-avatars.com/api/?name=${encodeURIComponent(t.name || t.register_no)}&background=f59e0b&color=060912&size=300&bold=true`
 
-  // Determine photo URL — prefer DB value, fall back to bucket search
   let photo = fallbackPhoto
   if (t.image_url && t.image_url.startsWith('http')) {
     photo = t.image_url.split('?')[0] + '?t=' + Date.now()
@@ -388,7 +575,6 @@ async function renderProfile(t) {
     const found = await findTeacherPhotoInBucket(t.register_no)
     if (found) {
       photo = found
-      // Save found URL back to DB silently
       supabase.from('teacher_information')
         .update({ image_url: found })
         .ilike('register_no', t.register_no)
@@ -546,15 +732,17 @@ async function renderProfile(t) {
 
   setTimeout(initFU, 80)
 
+  // FIX 1: await Promise.all BEFORE calling renderAttMgr so _rooms is populated
   const [sr, rr] = await Promise.all([
     supabase.from('student_information').select('register_no,name,year,department').order('year').order('department').order('name'),
     supabase.from('classrooms').select('*').order('created_at', { ascending: false })
   ])
   _stus  = sr.data || []
   _rooms = rr.data || []
-  renderAttMgr()
 
-  // Setup realtime for classrooms — persists across all sessions
+  renderAttMgr()
+  setTimeout(initFU, 80)
+
   setupRoomsRealtime()
 }
 
@@ -565,15 +753,15 @@ function tci(ico, cls, lbl, val) {
   </div></div>`
 }
 
-// ── ROOMS REALTIME — keeps classrooms live for all teachers ───
+// ── ROOMS REALTIME — keeps classrooms live ────────────────────
 function setupRoomsRealtime() {
+  // FIX 1: _roomsRtCh is now declared at top — no ReferenceError
   if (_roomsRtCh) { supabase.removeChannel(_roomsRtCh); _roomsRtCh = null }
 
   _roomsRtCh = supabase.channel('tc-rooms-live')
     .on('postgres_changes', {
       event: '*', schema: 'public', table: 'classrooms'
     }, async () => {
-      // Re-fetch all classrooms from Supabase on any change
       const { data } = await supabase
         .from('classrooms')
         .select('*')
@@ -732,7 +920,7 @@ window.fltStus = () => {
   if (el) el.innerHTML = stuSelHTML(grpStus(_stus), q)
 }
 
-// ── CREATE CLASSROOM (subject input removed) ──────────────────
+// ── CREATE CLASSROOM ──────────────────────────────────────────
 window.openCreate = () => {
   _selStu.clear()
   modal(`
@@ -769,7 +957,6 @@ window.openCreate = () => {
   </div>`)
 }
 
-// ── SAVE CLASSROOM — stores in Supabase 'classrooms' table ────
 window.saveRoom = async () => {
   const name = document.getElementById('cc_name')?.value?.trim()
   if (!name) { showToast('Classroom name is required.', 'warning'); return }
@@ -792,7 +979,6 @@ window.saveRoom = async () => {
   if (error) { showToast('Failed to create classroom: ' + error.message, 'error'); return }
 
   showToast(`Classroom "${name}" created and saved! 🎉`, 'success')
-  // Realtime will update _rooms and call refreshGrids automatically
   closeM('mCreate')
 }
 
@@ -890,7 +1076,6 @@ window.deleteRoom = async (id) => {
   const btn = document.querySelector('#mDeleteConfirm .tb-danger')
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting…' }
 
-  // Delete attendance records first, then sessions, then classroom
   await supabase.from('attendance_records').delete().eq('classroom_id', id)
   await supabase.from('attendance_sessions').delete().eq('classroom_id', id)
   const { error } = await supabase.from('classrooms').delete().eq('id', id)
@@ -901,10 +1086,9 @@ window.deleteRoom = async (id) => {
 
   showToast('Classroom deleted successfully.', 'info')
   closeM('mDeleteConfirm')
-  // Realtime will update _rooms and refreshGrids automatically
 }
 
-// ── MARK ATTENDANCE — stores in Supabase ──────────────────────
+// ── MARK ATTENDANCE ───────────────────────────────────────────
 window.openMarkAtt = id => {
   const room = _rooms.find(r => r.id === id); if (!room) return
   const stus = _stus.filter(s => (room.student_regnos || []).includes(s.register_no))
@@ -971,7 +1155,6 @@ window.markOne = (regno, status) => {
 
 window.markAll = s => _attStus.forEach(st => markOne(st.register_no, s))
 
-// ── SAVE ATTENDANCE — stores in Supabase ──────────────────────
 window.saveAtt = async id => {
   const date   = document.getElementById('attDate')?.value
   const period = parseInt(document.getElementById('attPer')?.value)
@@ -987,7 +1170,6 @@ window.saveAtt = async id => {
 
   const resetBtn = () => { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save Attendance' } }
 
-  // Upsert session into Supabase attendance_sessions table
   const { data: sess, error: sErr } = await supabase.from('attendance_sessions')
     .upsert({
       classroom_id: id, teacher_regno: _regno,
@@ -997,7 +1179,6 @@ window.saveAtt = async id => {
 
   if (sErr) { showToast('Session error: ' + sErr.message, 'error'); resetBtn(); return }
 
-  // Insert/upsert individual attendance records into Supabase attendance_records table
   const records = _attStus
     .filter(s => _attSt[s.register_no] !== null)
     .map(s => ({
@@ -1062,7 +1243,7 @@ window.viewSess = async sessId => {
   </div>`)
 }
 
-// ── EDIT CLASSROOM (subject input removed) ────────────────────
+// ── EDIT CLASSROOM ────────────────────────────────────────────
 window.openEditRoom = id => {
   const room = _rooms.find(r => r.id === id); if (!room) return
   _selStu.clear()
@@ -1122,7 +1303,5 @@ window.saveEditRoom = async id => {
 
   showToast('Classroom updated! ✅', 'success')
   closeM('mEdit')
-  // Realtime will update _rooms and refreshGrids automatically
-  // Also re-open the room modal with updated info after a short delay
   setTimeout(() => openRoom(id), 400)
 }
