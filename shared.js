@@ -1,10 +1,20 @@
+// shared.js — PDKV College — v5 OTP Edition
+// 8-digit OTP via Supabase Edge Functions + Resend email
 
 import { supabase } from './supabaseClient.js'
 import { injectSpeedInsights } from '@vercel/speed-insights'
 
 injectSpeedInsights({ debug: false })
 
-/* ── TOAST ──────────────────────────────────────────────────── */
+// ── CONSTANTS ─────────────────────────────────────────────────
+const SUPABASE_URL      = 'https://zsuonqltlodkzrqlhsnm.supabase.co'
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzdW9ucWx0bG9ka3pycWxoc25tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1ODUwNzAsImV4cCI6MjA4OTE2MTA3MH0.Ea8xTDxxp6GaDfUNuByjkQaUcFxJPrdO1VrzG06cTH4'
+const EDGE_BASE         = `${SUPABASE_URL}/functions/v1`
+
+// In-memory OTP verification state { email → { verified: bool, timestamp: number } }
+const _otpVerifiedMap = new Map()
+
+// ── TOAST ─────────────────────────────────────────────────────
 export function showToast(message, type = 'success', duration = 4000) {
   let container = document.querySelector('.toast-container')
   if (!container) {
@@ -23,116 +33,650 @@ export function showToast(message, type = 'success', duration = 4000) {
   }, duration)
 }
 
-/* ── OTP EMAIL VERIFICATION SYSTEM ─────────────────────────── */
-// Stores OTP state per email in memory
-const _otpStore = {}
-
-// Generate a 6-digit OTP and send it via Supabase Edge Function / direct email
-// We use Supabase's signInWithOtp which sends a 6-digit code to the email
-export async function sendEmailOtp(email) {
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return { success: false, error: 'Invalid email address.' }
-  }
-
+// ── OTP CORE API ───────────────────────────────────────────────
+/**
+ * Calls the send-otp Edge Function.
+ * Returns: { success, fallback, dev_otp?, error? }
+ */
+export async function sendOtp(email) {
   try {
-    // Use Supabase's built-in OTP (sends 6-digit code via email)
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email,
-      options: {
-        shouldCreateUser: true,
-        data: { otp_only: true }
-      }
+    const res = await fetch(`${EDGE_BASE}/send-otp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ email: email.toLowerCase().trim(), action: 'send' }),
     })
 
-    if (error) {
-      // Rate limit or other errors
-      return { success: false, error: error.message }
-    }
-
-    // Mark email as OTP-sent in memory
-    _otpStore[email] = { sent: true, verified: false, timestamp: Date.now() }
-    return { success: true }
-  } catch (e) {
-    return { success: false, error: e.message || 'Failed to send OTP.' }
+    const data = await res.json()
+    if (!res.ok) return { success: false, error: data.error || 'Failed to send OTP' }
+    return data
+  } catch (err) {
+    console.error('sendOtp error:', err)
+    return { success: false, error: 'Network error. Please try again.' }
   }
 }
 
-// Verify OTP entered by user against Supabase
-export async function verifyEmailOtp(email, token) {
-  if (!email || !token) return { success: false, error: 'Email and OTP required.' }
-
+/**
+ * Calls the verify-otp Edge Function.
+ * Returns: { success, email?, error?, attempts_remaining? }
+ */
+export async function verifyOtp(email, otp) {
   try {
-    const { data, error } = await supabase.auth.verifyOtp({
-      email: email,
-      token: token,
-      type: 'email'
+    const res = await fetch(`${EDGE_BASE}/verify-otp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ email: email.toLowerCase().trim(), otp: otp.trim() }),
     })
 
-    if (error) {
-      return { success: false, error: 'Invalid or expired OTP. Please try again.' }
+    const data = await res.json()
+    if (data.success) {
+      _otpVerifiedMap.set(email.toLowerCase().trim(), { verified: true, timestamp: Date.now() })
     }
-
-    // Mark as verified
-    if (_otpStore[email]) _otpStore[email].verified = true
-    return { success: true, session: data.session, user: data.user }
-  } catch (e) {
-    return { success: false, error: e.message || 'Verification failed.' }
+    return data
+  } catch (err) {
+    console.error('verifyOtp error:', err)
+    return { success: false, error: 'Network error. Please try again.' }
   }
 }
 
-// Check if email is verified in current session
-export function isEmailOtpVerified(email) {
-  return _otpStore[email]?.verified === true
+/** Check if email is verified in this session (within last 30 minutes) */
+export function isOtpVerified(email) {
+  const key    = email.toLowerCase().trim()
+  const record = _otpVerifiedMap.get(key)
+  if (!record || !record.verified) return false
+  // Verification expires after 30 minutes
+  if (Date.now() - record.timestamp > 30 * 60 * 1000) {
+    _otpVerifiedMap.delete(key)
+    return false
+  }
+  return true
 }
 
-// Clear OTP state for email
-export function clearOtpState(email) {
-  if (email) delete _otpStore[email]
+export function clearOtpVerification(email) {
+  _otpVerifiedMap.delete(email.toLowerCase().trim())
 }
 
-/* ── OTP INPUT WIDGET BUILDER ───────────────────────────────── */
-// Returns HTML string for an OTP-enabled email field
-// fieldId: the email input id
-// otpWrapperId: the wrapper div id that will show OTP input
-export function buildOtpEmailField(fieldId, otpWrapperId, label = 'Email *', placeholder = 'your@email.com') {
-  return `
-    <div class="form-group otp-email-group" id="${otpWrapperId}_outer">
-      <label class="form-label"><i class="fas fa-envelope"></i> ${label}</label>
-      <div class="otp-email-row">
-        <input type="email" id="${fieldId}" class="form-input" placeholder="${placeholder}" required autocomplete="email"/>
-        <button type="button" class="btn-send-otp" id="${otpWrapperId}_sendBtn" onclick="pdkvSendOtp('${fieldId}','${otpWrapperId}')">
-          <i class="fas fa-paper-plane"></i> Send OTP
-        </button>
+// Keep these exported for backward compat with Courses.js etc.
+export { sendOtp as sendEmailOtp }
+export function isEmailOtpVerified(email) { return isOtpVerified(email) }
+export function clearOtpState(email) { clearOtpVerification(email) }
+export async function verifyEmailOtp(email, token) { return verifyOtp(email, token) }
+
+// ── OTP CSS ────────────────────────────────────────────────────
+function _injectOtpStyles() {
+  if (document.getElementById('pdkv-otp-styles')) return
+  const style = document.createElement('style')
+  style.id = 'pdkv-otp-styles'
+  style.textContent = `
+/* ── OTP Modal Overlay ──────────────────────────── */
+#pdkv-otp-modal-overlay {
+  position: fixed; inset: 0; z-index: 99999;
+  background: rgba(8,10,46,0.76);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  opacity: 0; transition: opacity 0.28s ease;
+  pointer-events: none;
+}
+#pdkv-otp-modal-overlay.otp-visible {
+  opacity: 1; pointer-events: all;
+}
+
+#pdkv-otp-modal {
+  background: #ffffff;
+  border-radius: 28px;
+  width: 100%; max-width: 460px;
+  box-shadow: 0 32px 80px rgba(26,35,126,0.28), 0 8px 24px rgba(0,0,0,0.18);
+  overflow: hidden;
+  transform: scale(0.88) translateY(28px);
+  transition: transform 0.42s cubic-bezier(0.34,1.56,0.64,1);
+}
+#pdkv-otp-modal-overlay.otp-visible #pdkv-otp-modal {
+  transform: scale(1) translateY(0);
+}
+
+/* Header */
+.otp-modal-hdr {
+  background: linear-gradient(135deg, #1a237e 0%, #3949ab 55%, #4CAF50 100%);
+  padding: 30px 32px 26px;
+  text-align: center; color: white; position: relative;
+}
+.otp-modal-hdr-logo {
+  width: 64px; height: 64px; border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.35);
+  display: block; margin: 0 auto 14px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.otp-modal-hdr h3 {
+  font-family: 'Poppins', sans-serif;
+  font-size: 1.25rem; font-weight: 800; margin: 0 0 6px;
+  letter-spacing: -0.02em;
+}
+.otp-modal-hdr p {
+  font-size: 0.84rem; opacity: 0.82; margin: 0; line-height: 1.55;
+}
+.otp-modal-hdr p strong {
+  background: rgba(255,255,255,0.18);
+  padding: 1px 8px; border-radius: 50px;
+  font-weight: 800;
+}
+.otp-modal-close-btn {
+  position: absolute; top: 14px; right: 16px;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.25);
+  color: white; cursor: pointer; font-size: 1.05rem;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.28s cubic-bezier(0.34,1.56,0.64,1);
+}
+.otp-modal-close-btn:hover {
+  background: rgba(255,255,255,0.30);
+  transform: rotate(90deg) scale(1.1);
+}
+
+/* Body */
+.otp-modal-body { padding: 30px 32px 28px; }
+
+/* Fallback dev notice */
+.otp-dev-notice {
+  background: linear-gradient(135deg, rgba(33,150,243,0.07), rgba(76,175,80,0.07));
+  border: 1.5px solid rgba(33,150,243,0.22);
+  border-radius: 14px; padding: 14px 16px;
+  margin-bottom: 22px; font-size: 0.82rem; line-height: 1.6;
+  color: #1565C0;
+}
+.otp-dev-notice strong {
+  display: block; margin-bottom: 4px; font-size: 0.86rem;
+  color: #0d47a1;
+}
+.otp-dev-otp-display {
+  font-family: 'Courier New', monospace; font-size: 1.55rem;
+  font-weight: 900; letter-spacing: 0.18em; color: #1a237e;
+  text-align: center; display: block; margin-top: 8px;
+  background: rgba(26,35,126,0.07); padding: 8px 16px;
+  border-radius: 10px; border: 1.5px dashed rgba(26,35,126,0.25);
+}
+
+/* OTP digit inputs */
+.otp-digits-wrap {
+  display: flex; gap: 10px; justify-content: center;
+  margin-bottom: 6px;
+}
+.otp-digit-input {
+  width: 48px; height: 58px;
+  border: 2px solid #e5e7eb; border-radius: 14px;
+  background: #f8fafc; color: #1a237e;
+  font-size: 1.5rem; font-weight: 900; text-align: center;
+  font-family: 'Poppins', 'Courier New', monospace;
+  transition: all 0.22s cubic-bezier(0.34,1.56,0.64,1);
+  outline: none; caret-color: #4CAF50;
+}
+.otp-digit-input:focus {
+  border-color: #3949ab;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(57,73,171,0.12);
+  transform: translateY(-3px) scale(1.06);
+}
+.otp-digit-input.otp-filled { border-color: #4CAF50; background: #f0fdf4; }
+.otp-digit-input.otp-error {
+  border-color: #f44336 !important; background: #fff5f5 !important;
+  animation: otpShake 0.42s ease;
+}
+@keyframes otpShake {
+  0%,100%{transform:translateX(0);}25%{transform:translateX(-7px);}75%{transform:translateX(7px);}
+}
+
+/* Timer & resend */
+.otp-timer-row {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 0.8rem; color: #9ca3af; margin: 12px 0 18px;
+}
+.otp-countdown { font-weight: 700; color: #3949ab; }
+.otp-resend-btn {
+  background: none; border: 1px solid rgba(76,175,80,0.35);
+  color: #388E3C; font-size: 0.8rem; font-weight: 700; cursor: pointer;
+  padding: 4px 12px; border-radius: 50px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  transition: all 0.25s ease; display: none;
+}
+.otp-resend-btn.otp-resend-visible { display: inline-flex; align-items: center; gap: 5px; }
+.otp-resend-btn:hover { background: rgba(76,175,80,0.08); }
+.otp-resend-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Message area */
+.otp-msg-area {
+  text-align: center; font-size: 0.84rem; font-weight: 700;
+  padding: 10px 14px; border-radius: 12px; margin-bottom: 16px;
+  display: none;
+}
+.otp-msg-area.otp-msg-err {
+  background: rgba(244,67,54,0.08); border: 1px solid rgba(244,67,54,0.25);
+  color: #c62828;
+}
+.otp-msg-area.otp-msg-ok {
+  background: rgba(76,175,80,0.09); border: 1px solid rgba(76,175,80,0.28);
+  color: #2e7d32;
+}
+
+/* Verify button */
+.otp-verify-btn {
+  width: 100%; padding: 14px;
+  background: linear-gradient(135deg, #1a237e, #3949ab);
+  color: white; border: none; border-radius: 50px;
+  font-size: 0.96rem; font-weight: 800; cursor: pointer;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  transition: all 0.35s cubic-bezier(0.34,1.56,0.64,1);
+  box-shadow: 0 4px 18px rgba(26,35,126,0.32);
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+}
+.otp-verify-btn:hover:not(:disabled) {
+  transform: translateY(-3px); box-shadow: 0 10px 32px rgba(26,35,126,0.44);
+  background: linear-gradient(135deg, #0d1555, #283593);
+}
+.otp-verify-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+/* Progress dots */
+.otp-progress-dots {
+  display: flex; justify-content: center; gap: 6px; margin-top: 20px;
+}
+.otp-progress-dots span {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #e5e7eb; transition: background 0.3s ease;
+}
+.otp-progress-dots span.otp-dot-filled { background: #4CAF50; }
+
+/* ── Inline OTP trigger (email field row) */
+.otp-email-field-wrap { display: flex; gap: 9px; align-items: stretch; }
+.otp-email-field-wrap .form-input { flex: 1; min-width: 0; }
+.otp-send-trigger-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 17px; border-radius: 12px;
+  font-size: 0.81rem; font-weight: 700; white-space: nowrap;
+  background: linear-gradient(135deg, #3949ab, #1a237e);
+  color: white; border: none; cursor: pointer; flex-shrink: 0;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  transition: all 0.32s cubic-bezier(0.34,1.56,0.64,1);
+  box-shadow: 0 3px 12px rgba(26,35,126,0.28);
+}
+.otp-send-trigger-btn:hover:not(:disabled) {
+  transform: translateY(-2px); box-shadow: 0 6px 20px rgba(26,35,126,0.4);
+}
+.otp-send-trigger-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.otp-send-trigger-btn.otp-trigger-verified {
+  background: linear-gradient(135deg, #4CAF50, #388E3C);
+  box-shadow: 0 3px 12px rgba(76,175,80,0.3);
+}
+
+/* Verified chip below email */
+.otp-verified-chip {
+  display: none; align-items: center; gap: 6px;
+  background: rgba(76,175,80,0.09); border: 1px solid rgba(76,175,80,0.28);
+  color: #2e7d32; font-size: 0.78rem; font-weight: 700;
+  padding: 5px 12px; border-radius: 50px; margin-top: 7px;
+  animation: chipPop 0.42s cubic-bezier(0.34,1.56,0.64,1);
+  width: fit-content;
+}
+@keyframes chipPop {
+  from{transform:scale(0.75);opacity:0;} to{transform:scale(1);opacity:1;}
+}
+.otp-verified-chip.otp-chip-visible { display: inline-flex; }
+.otp-not-verified-hint {
+  font-size: 0.76rem; color: #9ca3af; margin-top: 5px;
+  display: flex; align-items: center; gap: 5px;
+}
+
+/* ── Dark theme overrides (Student / Teacher portals) */
+.tc-page .otp-digit-input,
+body.dark-portal .otp-digit-input {
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(255,255,255,0.12);
+  color: #fff;
+}
+.tc-page .otp-digit-input:focus,
+body.dark-portal .otp-digit-input:focus {
+  background: rgba(245,158,11,0.07);
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 4px rgba(245,158,11,0.14);
+}
+
+/* ── Responsive */
+@media (max-width: 480px) {
+  .otp-digit-input { width: 38px; height: 48px; font-size: 1.2rem; }
+  .otp-digits-wrap { gap: 7px; }
+  .otp-modal-hdr, .otp-modal-body { padding-left: 20px; padding-right: 20px; }
+}
+`
+  document.head.appendChild(style)
+}
+
+// ── OTP MODAL STATE ────────────────────────────────────────────
+let _otpModalCallback = null
+let _otpTimerInterval = null
+let _otpCurrentEmail  = ''
+let _otpDevFallback   = false
+let _otpDevCode       = ''
+
+function _buildOtpModal() {
+  const overlay = document.createElement('div')
+  overlay.id = 'pdkv-otp-modal-overlay'
+  overlay.innerHTML = `
+    <div id="pdkv-otp-modal" role="dialog" aria-modal="true" aria-label="Email Verification">
+      <div class="otp-modal-hdr">
+        <img src="https://yt3.googleusercontent.com/ytc/AIdro_k_qv60q5J-ADkI2QNCezEuT1zrK5KTSCIZMtIrhxphKU8=s900-c-k-c0x00ffffff-no-rj"
+             alt="PDKV" class="otp-modal-hdr-logo" />
+        <h3>📧 Verify Your Email</h3>
+        <p>We sent an 8-digit code to<br><strong id="otp-email-display"></strong></p>
+        <button class="otp-modal-close-btn" id="otp-close-btn" aria-label="Close">✕</button>
       </div>
-      <div id="${otpWrapperId}" class="otp-verify-panel" style="display:none;">
-        <div class="otp-info-msg"><i class="fas fa-info-circle"></i> A 6-digit OTP has been sent to your email. Enter it below.</div>
-        <div class="otp-input-row">
-          <input type="text" id="${otpWrapperId}_code" class="form-input otp-code-input" 
-            placeholder="Enter 8-digit OTP" maxlength="8" autocomplete="one-time-code"
-            oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
-          <button type="button" class="btn-verify-otp" id="${otpWrapperId}_verifyBtn" onclick="pdkvVerifyOtp('${fieldId}','${otpWrapperId}')">
-            <i class="fas fa-shield-check"></i> Verify
+      <div class="otp-modal-body">
+        <div class="otp-dev-notice" id="otp-dev-notice" style="display:none">
+          <strong>🛠 Development Mode</strong>
+          Email delivery is unavailable — use this code:
+          <span class="otp-dev-otp-display" id="otp-dev-code-display"></span>
+        </div>
+        <div class="otp-digits-wrap" id="otp-digits-wrap">
+          ${[0,1,2,3,4,5,6,7].map(i =>
+            `<input class="otp-digit-input" id="otp-d${i}" type="text"
+              inputmode="numeric" pattern="[0-9]" maxlength="1"
+              autocomplete="${i === 0 ? 'one-time-code' : 'off'}"
+              aria-label="Digit ${i+1}" />`
+          ).join('')}
+        </div>
+        <div class="otp-timer-row">
+          <span class="otp-countdown" id="otp-countdown">Expires in 10:00</span>
+          <button class="otp-resend-btn" id="otp-resend-btn" disabled>
+            <i class="fas fa-redo-alt"></i> Resend
           </button>
         </div>
-        <div class="otp-resend-row">
-          <span class="otp-timer" id="${otpWrapperId}_timer"></span>
-          <button type="button" class="otp-resend-btn" id="${otpWrapperId}_resendBtn" onclick="pdkvResendOtp('${fieldId}','${otpWrapperId}')" style="display:none;">
-            <i class="fas fa-redo"></i> Resend OTP
-          </button>
-        </div>
-        <div class="otp-verified-badge" id="${otpWrapperId}_badge" style="display:none;">
-          <i class="fas fa-check-circle"></i> Email Verified!
+        <div class="otp-msg-area" id="otp-msg"></div>
+        <button class="otp-verify-btn" id="otp-verify-btn">
+          <i class="fas fa-shield-check"></i> Verify & Continue
+        </button>
+        <div class="otp-progress-dots">
+          ${[0,1,2,3,4,5,6,7].map(i => `<span id="otp-dot-${i}"></span>`).join('')}
         </div>
       </div>
     </div>`
+
+  document.body.appendChild(overlay)
+
+  // Wire digit inputs
+  const digits = () => [...document.querySelectorAll('.otp-digit-input')]
+
+  overlay.querySelectorAll('.otp-digit-input').forEach((inp, idx) => {
+    inp.addEventListener('input', e => {
+      const val = e.target.value.replace(/\D/g, '')
+      e.target.value = val ? val[0] : ''
+      e.target.classList.toggle('otp-filled', !!val)
+      e.target.classList.remove('otp-error')
+      _updateDots(digits())
+      if (val && idx < 7) digits()[idx + 1]?.focus()
+    })
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Backspace' && !e.target.value && idx > 0) digits()[idx - 1]?.focus()
+      if (e.key === 'Enter') _triggerVerify()
+    })
+    inp.addEventListener('paste', e => {
+      e.preventDefault()
+      const text = (e.clipboardData || window.clipboardData)
+        .getData('text').replace(/\D/g, '').slice(0, 8)
+      const ds   = digits()
+      text.split('').forEach((ch, i) => {
+        if (ds[i]) { ds[i].value = ch; ds[i].classList.add('otp-filled') }
+      })
+      _updateDots(ds)
+      const next = ds.findIndex(d => !d.value)
+      ;(next >= 0 ? ds[next] : ds[7])?.focus()
+    })
+  })
+
+  document.getElementById('otp-verify-btn')?.addEventListener('click', _triggerVerify)
+  document.getElementById('otp-resend-btn')?.addEventListener('click', _resendOtp)
+  document.getElementById('otp-close-btn')?.addEventListener('click', () => {
+    if (confirm('Close verification? Your action will be cancelled.')) _closeOtpModal()
+  })
+
+  // Close on backdrop
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) {
+      if (confirm('Close verification? Your action will be cancelled.')) _closeOtpModal()
+    }
+  })
 }
 
-/* ── GLOBAL OTP HANDLERS (attached to window) ───────────────── */
-// These are called by onclick in dynamically injected HTML
-window.pdkvSendOtp = async function(fieldId, wrapperId) {
-  const emailInput = document.getElementById(fieldId)
-  const sendBtn    = document.getElementById(wrapperId + '_sendBtn')
-  const panel      = document.getElementById(wrapperId)
+function _updateDots(ds) {
+  ds.forEach((d, i) => {
+    document.getElementById(`otp-dot-${i}`)?.classList.toggle('otp-dot-filled', !!d.value)
+  })
+}
+
+function _showOtpMsg(msg, type = 'err') {
+  const el = document.getElementById('otp-msg')
+  if (!el) return
+  el.textContent = msg
+  el.className   = `otp-msg-area otp-msg-${type}`
+  el.style.display = 'block'
+}
+
+function _clearOtpMsg() {
+  const el = document.getElementById('otp-msg')
+  if (el) el.style.display = 'none'
+}
+
+function _getEnteredOtp() {
+  return [...document.querySelectorAll('.otp-digit-input')]
+    .map(d => d.value).join('')
+}
+
+function _startOtpTimer(seconds = 600) {
+  clearInterval(_otpTimerInterval)
+  let remaining = seconds
+  const countEl  = document.getElementById('otp-countdown')
+  const resendEl = document.getElementById('otp-resend-btn')
+
+  const tick = () => {
+    if (!countEl) return
+    const m = Math.floor(remaining / 60)
+    const s = remaining % 60
+    countEl.textContent = `Expires in ${m}:${String(s).padStart(2,'0')}`
+    if (remaining <= 60) countEl.style.color = '#f44336'
+    if (remaining <= 0) {
+      clearInterval(_otpTimerInterval)
+      countEl.textContent = 'OTP expired'
+      if (resendEl) {
+        resendEl.disabled = false
+        resendEl.classList.add('otp-resend-visible')
+      }
+      return
+    }
+    remaining--
+  }
+
+  tick()
+  _otpTimerInterval = setInterval(tick, 1000)
+
+  // Show resend after 60s
+  setTimeout(() => {
+    if (resendEl) {
+      resendEl.disabled = false
+      resendEl.classList.add('otp-resend-visible')
+    }
+  }, 60000)
+}
+
+async function _triggerVerify() {
+  const enteredOtp = _getEnteredOtp()
+  const btn        = document.getElementById('otp-verify-btn')
+  const digits     = document.querySelectorAll('.otp-digit-input')
+
+  _clearOtpMsg()
+
+  if (enteredOtp.length < 8) {
+    _showOtpMsg('Please enter all 8 digits of your OTP.')
+    digits.forEach(d => { if (!d.value) d.classList.add('otp-error') })
+    return
+  }
+
+  btn.disabled = true
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying…'
+
+  // If dev fallback, verify locally
+  let result
+  if (_otpDevFallback && _otpDevCode) {
+    if (enteredOtp === _otpDevCode) {
+      result = { success: true, email: _otpCurrentEmail }
+      _otpVerifiedMap.set(_otpCurrentEmail, { verified: true, timestamp: Date.now() })
+    } else {
+      result = { success: false, error: 'Incorrect OTP. Please try again.' }
+    }
+  } else {
+    result = await verifyOtp(_otpCurrentEmail, enteredOtp)
+  }
+
+  btn.disabled = false
+  btn.innerHTML = '<i class="fas fa-shield-check"></i> Verify & Continue'
+
+  if (!result.success) {
+    _showOtpMsg(result.error || 'Incorrect OTP. Please try again.')
+    digits.forEach(d => d.classList.add('otp-error'))
+    setTimeout(() => digits.forEach(d => d.classList.remove('otp-error')), 800)
+    return
+  }
+
+  // SUCCESS
+  clearInterval(_otpTimerInterval)
+  _showOtpMsg('✅ Email verified successfully!', 'ok')
+  btn.innerHTML = '<i class="fas fa-check-circle"></i> Verified!'
+  btn.style.background = 'linear-gradient(135deg,#4CAF50,#388E3C)'
+  btn.style.boxShadow  = '0 4px 18px rgba(76,175,80,0.4)'
+
+  setTimeout(() => {
+    _closeOtpModal()
+    if (_otpModalCallback) _otpModalCallback(result.email)
+  }, 750)
+}
+
+async function _resendOtp() {
+  const resendEl = document.getElementById('otp-resend-btn')
+  if (resendEl) { resendEl.disabled = true; resendEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i>' }
+
+  _otpDevFallback = false
+  _otpDevCode     = ''
+
+  const result = await sendOtp(_otpCurrentEmail)
+  if (result.success) {
+    if (result.fallback) {
+      _otpDevFallback = true
+      _otpDevCode     = result.dev_otp || ''
+      const devEl = document.getElementById('otp-dev-notice')
+      const codeEl = document.getElementById('otp-dev-code-display')
+      if (devEl)  devEl.style.display = 'block'
+      if (codeEl) codeEl.textContent  = _otpDevCode
+    }
+    // Clear inputs
+    document.querySelectorAll('.otp-digit-input').forEach(d => {
+      d.value = ''; d.classList.remove('otp-filled','otp-error')
+    })
+    document.querySelectorAll('.otp-progress-dots span').forEach(d => d.classList.remove('otp-dot-filled'))
+    document.getElementById('otp-countdown').style.color = '#3949ab'
+    _clearOtpMsg()
+    _startOtpTimer(600)
+    showToast('New OTP sent!', 'success')
+  } else {
+    showToast(result.error || 'Failed to resend OTP', 'error')
+  }
+
+  if (resendEl) {
+    resendEl.disabled = false
+    resendEl.innerHTML = '<i class="fas fa-redo-alt"></i> Resend'
+    resendEl.classList.remove('otp-resend-visible')
+  }
+}
+
+function _closeOtpModal() {
+  clearInterval(_otpTimerInterval)
+  const overlay = document.getElementById('pdkv-otp-modal-overlay')
+  if (overlay) {
+    overlay.classList.remove('otp-visible')
+    setTimeout(() => overlay.remove(), 300)
+  }
+  _otpModalCallback = null
+}
+
+/**
+ * Open OTP modal for an email. Calls `onVerified(email)` when done.
+ * If already verified and fresh, skips modal and calls onVerified immediately.
+ */
+export async function openOtpModal(email, onVerified) {
+  _injectOtpStyles()
+
+  const normalizedEmail = email.toLowerCase().trim()
+
+  // Already verified? Skip modal.
+  if (isOtpVerified(normalizedEmail)) {
+    onVerified(normalizedEmail)
+    return
+  }
+
+  // Send OTP first
+  const sendBtn = document.getElementById(`otp-trigger-${CSS.escape(normalizedEmail)}`)
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…' }
+
+  const result = await sendOtp(normalizedEmail)
+
+  if (sendBtn) {
+    sendBtn.disabled = false
+    sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Sent ✓'
+  }
+
+  if (!result.success) {
+    showToast(result.error || 'Failed to send OTP', 'error')
+    return
+  }
+
+  _otpCurrentEmail  = normalizedEmail
+  _otpModalCallback = onVerified
+  _otpDevFallback   = result.fallback || false
+  _otpDevCode       = result.dev_otp  || ''
+
+  // Remove any existing modal
+  document.getElementById('pdkv-otp-modal-overlay')?.remove()
+  _buildOtpModal()
+
+  // Set email display
+  const emailEl = document.getElementById('otp-email-display')
+  if (emailEl) emailEl.textContent = normalizedEmail
+
+  // Show dev notice if fallback
+  const devEl  = document.getElementById('otp-dev-notice')
+  const codeEl = document.getElementById('otp-dev-code-display')
+  if (_otpDevFallback) {
+    if (devEl)  devEl.style.display = 'block'
+    if (codeEl) codeEl.textContent  = _otpDevCode
+  }
+
+  // Open modal
+  const overlay = document.getElementById('pdkv-otp-modal-overlay')
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => overlay?.classList.add('otp-visible'))
+  })
+
+  // Start timer & focus first digit
+  _startOtpTimer(600)
+  setTimeout(() => document.getElementById('otp-d0')?.focus(), 400)
+}
+
+// ── GLOBAL WINDOW HANDLERS for inline onclick ─────────────────
+// Used by auth modal buttons (declared on window for dynamic HTML)
+window.pdkvSendOtp = async function(emailInputId, wrapperId) {
+  const emailInput = document.getElementById(emailInputId)
   const email      = emailInput?.value?.trim()
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -141,234 +685,31 @@ window.pdkvSendOtp = async function(fieldId, wrapperId) {
     return
   }
 
-  if (sendBtn) { sendBtn.disabled = true; sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…' }
-
-  const result = await sendEmailOtp(email)
-
-  if (!result.success) {
-    showToast('Failed to send OTP: ' + result.error, 'error')
-    if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send OTP' }
-    return
-  }
-
-  // Show OTP panel
-  if (panel) panel.style.display = 'block'
-  if (emailInput) emailInput.readOnly = true
-  if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = '<i class="fas fa-check"></i> OTP Sent' }
-  showToast('OTP sent to ' + email + ' ✉️', 'success')
-
-  // Start 60s countdown timer
-  _startOtpTimer(wrapperId, 60)
-
-  // Focus OTP input
-  setTimeout(() => document.getElementById(wrapperId + '_code')?.focus(), 200)
+  openOtpModal(email, (verifiedEmail) => {
+    // Mark email field as verified in UI
+    if (emailInput) { emailInput.readOnly = true; emailInput.classList.add('verified-email') }
+    const triggerBtn = document.getElementById(wrapperId + '_sendBtn') ||
+                       document.getElementById(`otp-trigger-${CSS.escape(email)}`)
+    if (triggerBtn) {
+      triggerBtn.innerHTML = '✓ Verified'
+      triggerBtn.classList.add('otp-trigger-verified')
+      triggerBtn.disabled = true
+    }
+    // Show verified chip
+    const chip = document.getElementById(wrapperId + '_chip')
+    if (chip) chip.classList.add('otp-chip-visible')
+    // Dispatch event
+    document.dispatchEvent(new CustomEvent('pdkv:emailVerified', {
+      detail: { email: verifiedEmail, emailInputId, wrapperId }
+    }))
+  })
 }
 
-window.pdkvVerifyOtp = async function(fieldId, wrapperId) {
-  const emailInput  = document.getElementById(fieldId)
-  const codeInput   = document.getElementById(wrapperId + '_code')
-  const verifyBtn   = document.getElementById(wrapperId + '_verifyBtn')
-  const badge       = document.getElementById(wrapperId + '_badge')
-  const email       = emailInput?.value?.trim()
-  const token       = codeInput?.value?.trim()
+// Keep old names working
+window.pdkvVerifyOtp  = () => {}
+window.pdkvResendOtp  = () => {}
 
-  if (!token || token.length !== 8) {
-    showToast('Please enter the 8-digit OTP.', 'warning')
-    codeInput?.focus()
-    return
-  }
-
-  if (verifyBtn) { verifyBtn.disabled = true; verifyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying…' }
-
-  const result = await verifyEmailOtp(email, token)
-
-  if (!result.success) {
-    showToast(result.error, 'error')
-    if (verifyBtn) { verifyBtn.disabled = false; verifyBtn.innerHTML = '<i class="fas fa-shield-check"></i> Verify' }
-    codeInput?.select()
-    return
-  }
-
-  // Success — show verified badge
-  if (badge) badge.style.display = 'flex'
-  if (codeInput) codeInput.readOnly = true
-  if (verifyBtn) { verifyBtn.style.display = 'none' }
-
-  const panel = document.getElementById(wrapperId)
-  if (panel) {
-    panel.querySelector('.otp-input-row')?.classList.add('verified')
-    panel.querySelector('.otp-resend-row')?.style && (panel.querySelector('.otp-resend-row').style.display = 'none')
-  }
-
-  showToast('Email verified successfully! ✅', 'success')
-
-  // Fire a custom event so forms can react
-  document.dispatchEvent(new CustomEvent('pdkv:emailVerified', { detail: { email, fieldId, wrapperId } }))
-}
-
-window.pdkvResendOtp = async function(fieldId, wrapperId) {
-  const emailInput = document.getElementById(fieldId)
-  const email      = emailInput?.value?.trim()
-  const resendBtn  = document.getElementById(wrapperId + '_resendBtn')
-  if (!email) return
-
-  if (resendBtn) { resendBtn.disabled = true; resendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>' }
-
-  // Clear verified state
-  clearOtpState(email)
-  const result = await sendEmailOtp(email)
-
-  if (!result.success) {
-    showToast('Failed to resend: ' + result.error, 'error')
-    if (resendBtn) { resendBtn.disabled = false; resendBtn.innerHTML = '<i class="fas fa-redo"></i> Resend OTP' }
-    return
-  }
-
-  // Reset code input
-  const codeInput = document.getElementById(wrapperId + '_code')
-  if (codeInput) { codeInput.value = ''; codeInput.readOnly = false }
-  const badge = document.getElementById(wrapperId + '_badge')
-  if (badge) badge.style.display = 'none'
-
-  const verifyBtn = document.getElementById(wrapperId + '_verifyBtn')
-  if (verifyBtn) { verifyBtn.style.display = ''; verifyBtn.disabled = false; verifyBtn.innerHTML = '<i class="fas fa-shield-check"></i> Verify' }
-
-  showToast('New OTP sent! ✉️', 'success')
-  _startOtpTimer(wrapperId, 60)
-}
-
-function _startOtpTimer(wrapperId, seconds) {
-  const timerEl   = document.getElementById(wrapperId + '_timer')
-  const resendBtn = document.getElementById(wrapperId + '_resendBtn')
-  if (resendBtn) resendBtn.style.display = 'none'
-
-  let remaining = seconds
-  const tick = () => {
-    if (!document.getElementById(wrapperId + '_timer')) return // element removed
-    if (timerEl) timerEl.textContent = `Resend in ${remaining}s`
-    if (remaining <= 0) {
-      if (timerEl) timerEl.textContent = ''
-      if (resendBtn) { resendBtn.style.display = 'inline-flex' }
-      return
-    }
-    remaining--
-    setTimeout(tick, 1000)
-  }
-  tick()
-}
-
-/* ── OTP CSS INJECTION ──────────────────────────────────────── */
-// Inject OTP-specific styles once
-function _injectOtpStyles() {
-  if (document.getElementById('pdkv-otp-styles')) return
-  const style = document.createElement('style')
-  style.id = 'pdkv-otp-styles'
-  style.textContent = `
-    .otp-email-row {
-      display: flex; gap: 8px; align-items: stretch;
-    }
-    .otp-email-row .form-input {
-      flex: 1; min-width: 0;
-    }
-    .btn-send-otp {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 10px 16px; border-radius: var(--radius-sm, 10px);
-      font-size: 0.82rem; font-weight: 700;
-      background: linear-gradient(135deg, var(--accent2, #2196F3), var(--accent2-dark, #1565C0));
-      color: white; border: none; cursor: pointer; white-space: nowrap;
-      transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
-      font-family: var(--font-body, 'Plus Jakarta Sans', sans-serif);
-      flex-shrink: 0;
-    }
-    .btn-send-otp:hover:not(:disabled) {
-      transform: translateY(-2px); box-shadow: 0 6px 18px rgba(33,150,243,0.35);
-    }
-    .btn-send-otp:disabled { opacity: 0.65; cursor: not-allowed; }
-
-    .otp-verify-panel {
-      margin-top: 12px;
-      background: linear-gradient(135deg, rgba(33,150,243,0.06), rgba(76,175,80,0.06));
-      border: 1.5px solid rgba(33,150,243,0.22);
-      border-radius: var(--radius-sm, 10px);
-      padding: 14px;
-      animation: otpPanelIn 0.4s cubic-bezier(0.34,1.2,0.64,1);
-    }
-    @keyframes otpPanelIn {
-      from { opacity: 0; transform: translateY(-10px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-    .otp-info-msg {
-      font-size: 0.80rem; color: var(--accent2-dark, #1565C0);
-      margin-bottom: 10px; font-weight: 600;
-      display: flex; align-items: center; gap: 6px;
-    }
-    .otp-input-row {
-      display: flex; gap: 8px; margin-bottom: 8px;
-    }
-    .otp-code-input {
-      letter-spacing: 0.25em; font-size: 1.1rem !important;
-      font-weight: 800 !important; text-align: center;
-      flex: 1;
-    }
-    .btn-verify-otp {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 10px 16px; border-radius: var(--radius-sm, 10px);
-      font-size: 0.82rem; font-weight: 700;
-      background: linear-gradient(135deg, var(--accent, #4CAF50), var(--accent-dark, #388E3C));
-      color: white; border: none; cursor: pointer; white-space: nowrap;
-      transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
-      font-family: var(--font-body, 'Plus Jakarta Sans', sans-serif);
-      flex-shrink: 0;
-    }
-    .btn-verify-otp:hover:not(:disabled) {
-      transform: translateY(-2px); box-shadow: 0 6px 18px rgba(76,175,80,0.35);
-    }
-    .btn-verify-otp:disabled { opacity: 0.65; cursor: not-allowed; }
-    .otp-resend-row {
-      display: flex; align-items: center; gap: 10px; font-size: 0.78rem;
-    }
-    .otp-timer { color: var(--text-muted, #6b7280); font-weight: 600; }
-    .otp-resend-btn {
-      display: inline-flex; align-items: center; gap: 5px;
-      background: none; border: 1px solid rgba(33,150,243,0.35);
-      color: var(--accent2, #2196F3); font-size: 0.78rem; font-weight: 700;
-      padding: 4px 12px; border-radius: 50px; cursor: pointer;
-      transition: all 0.25s ease; font-family: var(--font-body, 'Plus Jakarta Sans', sans-serif);
-    }
-    .otp-resend-btn:hover:not(:disabled) { background: rgba(33,150,243,0.08); }
-    .otp-verified-badge {
-      display: flex; align-items: center; gap: 6px;
-      background: rgba(76,175,80,0.10); border: 1px solid rgba(76,175,80,0.28);
-      color: var(--accent-dark, #388E3C); font-size: 0.82rem; font-weight: 700;
-      padding: 8px 14px; border-radius: var(--radius-sm, 10px); margin-top: 8px;
-      animation: verifiedIn 0.45s cubic-bezier(0.34,1.56,0.64,1);
-    }
-    @keyframes verifiedIn {
-      from { transform: scale(0.88); opacity: 0; }
-      to   { transform: scale(1); opacity: 1; }
-    }
-    .otp-verified-badge i { color: var(--accent, #4CAF50); font-size: 1rem; }
-
-    /* Dark theme overrides for Student/Teacher portals */
-    .tc-page .otp-verify-panel,
-    body[data-dark] .otp-verify-panel,
-    .sp-glass .otp-verify-panel {
-      background: rgba(0,245,212,0.06); border-color: rgba(0,245,212,0.22);
-    }
-    .tc-page .otp-info-msg { color: #60a5fa; }
-    .tc-page .otp-verified-badge {
-      background: rgba(0,245,212,0.10); border-color: rgba(0,245,212,0.28); color: #a7f3d0;
-    }
-
-    /* Email verified state — lock icon on input */
-    .form-input[readonly].verified-email {
-      background: rgba(76,175,80,0.06); border-color: rgba(76,175,80,0.35);
-    }
-  `
-  document.head.appendChild(style)
-}
-
-/* ── STICKY HEADER + SCROLL PROGRESS + BACK-TO-TOP ─────────── */
+// ── STICKY HEADER + SCROLL PROGRESS + BACK-TO-TOP ─────────── */
 export function initStickyHeader() {
   _injectOtpStyles()
   const header = document.querySelector('.site-header')
@@ -405,7 +746,7 @@ export function initStickyHeader() {
   window.addEventListener('scroll', onScroll, { passive: true })
 }
 
-/* ── HAMBURGER ───────────────────────────────────────────────── */
+// ── HAMBURGER ─────────────────────────────────────────────────
 export function initHamburger() {
   const btn = document.querySelector('.hamburger')
   const nav = document.querySelector('.site-nav')
@@ -432,12 +773,10 @@ export function initHamburger() {
     if (!btn.contains(e.target) && !nav.contains(e.target)) close()
   })
 
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') close()
-  })
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close() })
 }
 
-/* ── SCROLL ANIMATIONS ───────────────────────────────────────── */
+// ── SCROLL ANIMATIONS ─────────────────────────────────────────
 export function initScrollAnimations() {
   const els = document.querySelectorAll('.animate-fade-up:not(.visible)')
   if (!els.length) return
@@ -454,7 +793,7 @@ export function initScrollAnimations() {
   els.forEach(el => observer.observe(el))
 }
 
-/* ── COUNTER ANIMATION ────────────────────────────────────────── */
+// ── COUNTER ───────────────────────────────────────────────────
 export function animateCounter(el) {
   const target    = parseFloat(el.dataset.target)
   if (isNaN(target)) return
@@ -476,7 +815,6 @@ export function animateCounter(el) {
     if (progress < 1) requestAnimationFrame(tick)
     else el.textContent = fmt(target)
   }
-
   requestAnimationFrame(tick)
 }
 
@@ -495,7 +833,7 @@ export function initCounters() {
   counters.forEach(c => observer.observe(c))
 }
 
-/* ── MODAL HELPERS ───────────────────────────────────────────── */
+// ── MODAL HELPERS ─────────────────────────────────────────────
 export function openModal(id) {
   const el = document.getElementById(id)
   if (!el) return
@@ -534,7 +872,7 @@ export function initModalCloseHandlers() {
   })
 }
 
-/* ── PASSWORD TOGGLE ─────────────────────────────────────────── */
+// ── PASSWORD TOGGLE ───────────────────────────────────────────
 export function initPasswordToggles(container) {
   const scope = container || document
   scope.querySelectorAll('.pw-toggle-wrap').forEach(wrap => {
@@ -555,7 +893,7 @@ export function initPasswordToggles(container) {
   })
 }
 
-/* ── GLOBAL AUTH ─────────────────────────────────────────────── */
+// ── GLOBAL AUTH ───────────────────────────────────────────────
 let _currentUser  = null
 let _userProfile  = null
 const _authCbs    = []
@@ -563,8 +901,8 @@ const _authCbs    = []
 export function onAuthChange(cb) { _authCbs.push(cb) }
 function _notify() { _authCbs.forEach(cb => { try { cb(_currentUser, _userProfile) } catch(e){} }) }
 
-export function getCurrentUser() { return _currentUser }
-export function getUserProfile() { return _userProfile }
+export function getCurrentUser()  { return _currentUser }
+export function getUserProfile()  { return _userProfile }
 
 export async function initAuth() {
   _injectOtpStyles()
@@ -576,17 +914,7 @@ export async function initAuth() {
     const { data: { session } } = await supabase.auth.getSession()
     if (session?.user) {
       _currentUser = session.user
-      supabase
-        .from('login_information')
-        .select('*')
-        .eq('id', _currentUser.id)
-        .maybeSingle()
-        .then(({ data }) => {
-          _userProfile = data || {}
-          updateHeaderAuthUI()
-          _notify()
-        })
-        .catch(() => { _userProfile = {}; updateHeaderAuthUI(); _notify() })
+      await _fetchProfile(_currentUser.id)
     }
   } catch(e) { console.warn('Auth session error:', e) }
 
@@ -594,29 +922,33 @@ export async function initAuth() {
   updateHeaderAuthUI()
   _notify()
 
-  supabase.auth.onAuthStateChange((_event, session) => {
+  supabase.auth.onAuthStateChange(async (_event, session) => {
     if (session?.user) {
       _currentUser = session.user
-      supabase
-        .from('login_information')
-        .select('*')
-        .eq('id', _currentUser.id)
-        .maybeSingle()
-        .then(({ data }) => {
-          _userProfile = data || {}
-          updateHeaderAuthUI()
-          _notify()
-        })
-        .catch(() => { _userProfile = {}; updateHeaderAuthUI(); _notify() })
+      await _fetchProfile(_currentUser.id)
     } else {
       _currentUser = null
       _userProfile = null
-      updateHeaderAuthUI()
-      _notify()
     }
+    updateHeaderAuthUI()
+    _notify()
   })
 }
 
+async function _fetchProfile(userId) {
+  try {
+    const { data } = await supabase
+      .from('login_information')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle()
+    _userProfile = data || {}
+  } catch { _userProfile = {} }
+  updateHeaderAuthUI()
+  _notify()
+}
+
+// ── AUTH MODAL HTML ───────────────────────────────────────────
 function _authModalHTML() {
   return `
   <div class="modal-overlay" id="globalAuthModal" role="dialog" aria-modal="true">
@@ -636,44 +968,33 @@ function _authModalHTML() {
           <form id="globalLoginForm" novalidate>
             <div class="form-group">
               <label class="form-label"><i class="fas fa-envelope"></i> Email</label>
-              <div class="otp-email-row">
-                <input type="email" id="loginEmail" class="form-input" placeholder="your@email.com" required autocomplete="email"/>
-                <button type="button" class="btn-send-otp" id="login_otp_sendBtn" onclick="pdkvSendOtp('loginEmail','login_otp')">
+              <div class="otp-email-field-wrap">
+                <input type="email" id="loginEmail" class="form-input"
+                  placeholder="your@email.com" required autocomplete="email"/>
+                <button type="button" class="otp-send-trigger-btn" id="login_otp_sendBtn"
+                  onclick="pdkvSendOtp('loginEmail','login_otp')">
                   <i class="fas fa-paper-plane"></i> Send OTP
                 </button>
               </div>
-              <div id="login_otp" class="otp-verify-panel" style="display:none;">
-                <div class="otp-info-msg"><i class="fas fa-info-circle"></i> A 6-digit OTP has been sent to your email.</div>
-                <div class="otp-input-row">
-                  <input type="text" id="login_otp_code" class="form-input otp-code-input"
-                    placeholder="Enter 6-digit OTP" maxlength="6" autocomplete="one-time-code"
-                    oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
-                  <button type="button" class="btn-verify-otp" id="login_otp_verifyBtn" onclick="pdkvVerifyOtp('loginEmail','login_otp')">
-                    <i class="fas fa-shield-check"></i> Verify
-                  </button>
-                </div>
-                <div class="otp-resend-row">
-                  <span class="otp-timer" id="login_otp_timer"></span>
-                  <button type="button" class="otp-resend-btn" id="login_otp_resendBtn" onclick="pdkvResendOtp('loginEmail','login_otp')" style="display:none;">
-                    <i class="fas fa-redo"></i> Resend OTP
-                  </button>
-                </div>
-                <div class="otp-verified-badge" id="login_otp_badge" style="display:none;">
-                  <i class="fas fa-check-circle"></i> Email Verified!
-                </div>
-              </div>
+              <span class="otp-not-verified-hint" id="login_otp_hint">
+                <i class="fas fa-info-circle"></i> Verify your email with OTP first
+              </span>
+              <span class="otp-verified-chip" id="login_otp_chip">
+                <i class="fas fa-check-circle"></i> Email Verified
+              </span>
             </div>
             <div class="form-group">
               <label class="form-label"><i class="fas fa-lock"></i> Password</label>
               <div class="pw-toggle-wrap">
-                <input type="password" id="loginPassword" class="form-input" placeholder="••••••••" required autocomplete="current-password"/>
-                <button type="button" class="pw-eye-btn" title="Show password"><i class="fas fa-eye"></i></button>
+                <input type="password" id="loginPassword" class="form-input"
+                  placeholder="••••••••" required autocomplete="current-password"/>
+                <button type="button" class="pw-eye-btn" title="Show password">
+                  <i class="fas fa-eye"></i>
+                </button>
               </div>
             </div>
-            <div id="loginEmailVerifyNote" class="otp-info-msg" style="display:none;margin-bottom:8px;color:#e65100;background:rgba(255,152,0,0.08);border-radius:8px;padding:8px 12px;">
-              <i class="fas fa-exclamation-triangle"></i> Please verify your email with OTP before signing in.
-            </div>
-            <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:10px;" id="loginSubmitBtn">
+            <button type="submit" class="btn btn-primary"
+              style="width:100%;justify-content:center;margin-top:12px;" id="loginSubmitBtn">
               <i class="fas fa-sign-in-alt"></i> Sign In
             </button>
           </form>
@@ -684,18 +1005,20 @@ function _authModalHTML() {
           <form id="globalSignupForm" novalidate>
             <div class="form-group">
               <label class="form-label"><i class="fas fa-user"></i> Full Name *</label>
-              <input type="text" id="signupName" class="form-input" placeholder="Your full name" required/>
+              <input type="text" id="signupName" class="form-input"
+                placeholder="Your full name" required/>
             </div>
             <div class="form-group">
               <label class="form-label">
                 <i class="fas fa-id-card"></i> Register Number
-                <span style="font-weight:400;opacity:0.55;font-size:0.76rem;">(optional)</span>
+                <span style="font-weight:400;opacity:.55;font-size:.75rem;">(optional)</span>
               </label>
               <input type="text" id="signupRegno" class="form-input" placeholder="e.g. 22CS0001"/>
             </div>
             <div class="form-group">
               <label class="form-label"><i class="fas fa-phone"></i> Phone *</label>
-              <input type="tel" id="signupPhone" class="form-input" placeholder="+91 99999 99999" required/>
+              <input type="tel" id="signupPhone" class="form-input"
+                placeholder="+91 99999 99999" required/>
             </div>
             <div class="form-group">
               <label class="form-label"><i class="fas fa-venus-mars"></i> Gender *</label>
@@ -706,47 +1029,35 @@ function _authModalHTML() {
                 <option value="Other">Other</option>
               </select>
             </div>
-            <!-- Email with OTP verification for signup -->
             <div class="form-group">
               <label class="form-label"><i class="fas fa-envelope"></i> Email *</label>
-              <div class="otp-email-row">
-                <input type="email" id="signupEmail" class="form-input" placeholder="your@email.com" required autocomplete="email"/>
-                <button type="button" class="btn-send-otp" id="signup_otp_sendBtn" onclick="pdkvSendOtp('signupEmail','signup_otp')">
+              <div class="otp-email-field-wrap">
+                <input type="email" id="signupEmail" class="form-input"
+                  placeholder="your@email.com" required autocomplete="email"/>
+                <button type="button" class="otp-send-trigger-btn" id="signup_otp_sendBtn"
+                  onclick="pdkvSendOtp('signupEmail','signup_otp')">
                   <i class="fas fa-paper-plane"></i> Send OTP
                 </button>
               </div>
-              <div id="signup_otp" class="otp-verify-panel" style="display:none;">
-                <div class="otp-info-msg"><i class="fas fa-info-circle"></i> A 6-digit OTP has been sent to your email.</div>
-                <div class="otp-input-row">
-                  <input type="text" id="signup_otp_code" class="form-input otp-code-input"
-                    placeholder="Enter 8-digit OTP" maxlength="8" autocomplete="one-time-code"
-                    oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
-                  <button type="button" class="btn-verify-otp" id="signup_otp_verifyBtn" onclick="pdkvVerifyOtp('signupEmail','signup_otp')">
-                    <i class="fas fa-shield-check"></i> Verify
-                  </button>
-                </div>
-                <div class="otp-resend-row">
-                  <span class="otp-timer" id="signup_otp_timer"></span>
-                  <button type="button" class="otp-resend-btn" id="signup_otp_resendBtn" onclick="pdkvResendOtp('signupEmail','signup_otp')" style="display:none;">
-                    <i class="fas fa-redo"></i> Resend OTP
-                  </button>
-                </div>
-                <div class="otp-verified-badge" id="signup_otp_badge" style="display:none;">
-                  <i class="fas fa-check-circle"></i> Email Verified!
-                </div>
-              </div>
+              <span class="otp-not-verified-hint" id="signup_otp_hint">
+                <i class="fas fa-info-circle"></i> Verify your email with OTP first
+              </span>
+              <span class="otp-verified-chip" id="signup_otp_chip">
+                <i class="fas fa-check-circle"></i> Email Verified
+              </span>
             </div>
             <div class="form-group">
               <label class="form-label"><i class="fas fa-lock"></i> Password (min 6 chars) *</label>
               <div class="pw-toggle-wrap">
-                <input type="password" id="signupPassword" class="form-input" placeholder="••••••••" required minlength="6" autocomplete="new-password"/>
-                <button type="button" class="pw-eye-btn" title="Show password"><i class="fas fa-eye"></i></button>
+                <input type="password" id="signupPassword" class="form-input"
+                  placeholder="••••••••" required minlength="6" autocomplete="new-password"/>
+                <button type="button" class="pw-eye-btn" title="Show password">
+                  <i class="fas fa-eye"></i>
+                </button>
               </div>
             </div>
-            <div id="signupEmailVerifyNote" class="otp-info-msg" style="display:none;margin-bottom:8px;color:#e65100;background:rgba(255,152,0,0.08);border-radius:8px;padding:8px 12px;">
-              <i class="fas fa-exclamation-triangle"></i> Please verify your email with OTP before creating account.
-            </div>
-            <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:10px;" id="signupSubmitBtn">
+            <button type="submit" class="btn btn-primary"
+              style="width:100%;justify-content:center;margin-top:12px;" id="signupSubmitBtn">
               <i class="fas fa-user-plus"></i> Create Account
             </button>
           </form>
@@ -758,10 +1069,9 @@ function _authModalHTML() {
 }
 
 function _wireAuthForms() {
-  // Close button
-  document.getElementById('_authClose')?.addEventListener('click', () => closeModal('globalAuthModal'))
+  document.getElementById('_authClose')
+    ?.addEventListener('click', () => closeModal('globalAuthModal'))
 
-  // Tab switching
   document.querySelectorAll('#globalAuthModal .auth-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('#globalAuthModal .auth-tab').forEach(t => t.classList.remove('active'))
@@ -773,109 +1083,73 @@ function _wireAuthForms() {
 
   initPasswordToggles(document.getElementById('globalAuthModal'))
 
-  // ── LOGIN ──
-  // When OTP is verified for login, Supabase already creates/logs in the session
-  // We then just need to fetch the profile and close
-  document.addEventListener('pdkv:emailVerified', async (ev) => {
-    const { fieldId } = ev.detail
-    // If login email was verified, auto-complete sign in
-    if (fieldId === 'loginEmail') {
-      const email = document.getElementById('loginEmail')?.value?.trim()
-      if (!email) return
-      const loginNote = document.getElementById('loginEmailVerifyNote')
-      if (loginNote) loginNote.style.display = 'none'
-
-      // Check if we have an active session from OTP verification
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user) {
-        _currentUser = session.user
-        // Fetch or create profile
-        const { data: profile } = await supabase.from('login_information')
-          .select('*').eq('id', _currentUser.id).maybeSingle()
-
-        if (!profile) {
-          // New user — need password set. Show password field.
-          showToast('Email verified! Please enter a password to complete sign-in.', 'info', 5000)
-        } else {
-          _userProfile = profile
-          showToast('Signed in successfully! 👋', 'success')
-          closeModal('globalAuthModal')
-          updateHeaderAuthUI()
-          _notify()
-        }
-      }
-    }
+  // Listen for OTP verified events to hide hints, show chips
+  document.addEventListener('pdkv:emailVerified', (ev) => {
+    const { wrapperId } = ev.detail
+    const hint = document.getElementById(wrapperId + '_hint')
+    if (hint) hint.style.display = 'none'
   })
 
+  // ── SIGN IN ──────────────────────────────────────────────────
   document.getElementById('globalLoginForm')?.addEventListener('submit', async (e) => {
     e.preventDefault()
     const email    = document.getElementById('loginEmail')?.value.trim()
     const password = document.getElementById('loginPassword')?.value
-    const note     = document.getElementById('loginEmailVerifyNote')
 
-    if (!email || !password) { showToast('Please enter email and password.', 'warning'); return }
+    if (!email || !password) {
+      showToast('Please enter your email and password.', 'warning'); return
+    }
 
     // Require OTP verification
-    if (!isEmailOtpVerified(email)) {
-      if (note) note.style.display = 'flex'
-      showToast('Please verify your email with OTP first.', 'warning')
-      document.getElementById('login_otp_sendBtn')?.focus()
+    if (!isOtpVerified(email)) {
+      showToast('Please verify your email with OTP before signing in.', 'warning')
+      const sendBtn = document.getElementById('login_otp_sendBtn')
+      if (sendBtn) {
+        sendBtn.style.boxShadow = '0 0 0 4px rgba(26,35,126,0.35)'
+        setTimeout(() => sendBtn.style.boxShadow = '', 1200)
+      }
       return
     }
-    if (note) note.style.display = 'none'
 
     const btn = document.getElementById('loginSubmitBtn')
     btn.disabled = true
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing In…'
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing in…'
 
-    // Since OTP verification already signs in the user via Supabase,
-    // try updating password if provided (for new users) or just confirm session
-    const { data: { session } } = await supabase.auth.getSession()
+    // Try password sign-in
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
-    let signInOk = false
-
-    if (session?.user) {
-      // Already signed in via OTP — update password if needed
-      const { error: pwErr } = await supabase.auth.updateUser({ password })
-      if (!pwErr) signInOk = true
-      else {
-        // Password update failed — try traditional sign in
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
-        signInOk = !error
-        if (!signInOk) { showToast(error.message, 'error') }
+    if (error) {
+      // If user doesn't exist, prompt to create account
+      if (error.message.includes('Invalid login credentials')) {
+        btn.disabled = false
+        btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In'
+        showToast('No account found. Please create one or check your password.', 'error', 5000)
+        return
       }
-    } else {
-      // No session from OTP — try password sign in
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
-      signInOk = !error
-      if (!signInOk) { showToast(error.message, 'error') }
+      btn.disabled = false
+      btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In'
+      showToast(error.message, 'error')
+      return
     }
 
-    btn.disabled = false
-    btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In'
-
-    if (!signInOk) return
-
-    // Save to login_information
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
+    // Save last login
+    if (data.user) {
       await supabase.from('login_information').upsert(
-        { id: user.id, email, last_login: new Date().toISOString() },
+        { id: data.user.id, email, last_login: new Date().toISOString() },
         { onConflict: 'id' }
       )
     }
 
+    btn.disabled = false
+    btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In'
     showToast('Welcome back! 👋', 'success')
     closeModal('globalAuthModal')
-    clearOtpState(email)
+    clearOtpVerification(email)
     document.getElementById('globalLoginForm').reset()
-    document.getElementById('login_otp').style.display = 'none'
-    document.getElementById('loginEmail').readOnly = false
-    const loginBadge = document.getElementById('login_otp_badge')
-    if (loginBadge) loginBadge.style.display = 'none'
+    _resetOtpFieldUI('login_otp', 'loginEmail')
   })
 
-  // ── SIGNUP ──
+  // ── CREATE ACCOUNT ────────────────────────────────────────────
   document.getElementById('globalSignupForm')?.addEventListener('submit', async (e) => {
     e.preventDefault()
     const name     = document.getElementById('signupName')?.value.trim()
@@ -884,65 +1158,78 @@ function _wireAuthForms() {
     const gender   = document.getElementById('signupGender')?.value
     const email    = document.getElementById('signupEmail')?.value.trim()
     const password = document.getElementById('signupPassword')?.value
-    const note     = document.getElementById('signupEmailVerifyNote')
 
     if (!name || !phone || !gender || !email || !password) {
-      showToast('Fill all required fields.', 'warning'); return
+      showToast('Please fill all required fields.', 'warning'); return
     }
     if (password.length < 6) {
       showToast('Password must be at least 6 characters.', 'warning'); return
     }
-
-    // Require OTP verification
-    if (!isEmailOtpVerified(email)) {
-      if (note) note.style.display = 'flex'
-      showToast('Please verify your email with OTP first.', 'warning')
-      document.getElementById('signup_otp_sendBtn')?.focus()
+    if (!isOtpVerified(email)) {
+      showToast('Please verify your email with OTP before creating an account.', 'warning')
+      const sendBtn = document.getElementById('signup_otp_sendBtn')
+      if (sendBtn) {
+        sendBtn.style.boxShadow = '0 0 0 4px rgba(26,35,126,0.35)'
+        setTimeout(() => sendBtn.style.boxShadow = '', 1200)
+      }
       return
     }
-    if (note) note.style.display = 'none'
 
     const btn = document.getElementById('signupSubmitBtn')
     btn.disabled = true
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating…'
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating Account…'
 
-    // OTP already created user — update password
-    const { data: { session } } = await supabase.auth.getSession()
-    let userId = session?.user?.id
+    // Sign up with Supabase Auth
+    const { data, error } = await supabase.auth.signUp({ email, password })
 
-    if (session?.user) {
-      await supabase.auth.updateUser({ password })
-    } else {
-      const { data, error } = await supabase.auth.signUp({ email, password })
-      if (error) {
-        showToast(error.message, 'error')
-        btn.disabled = false; btn.innerHTML = '<i class="fas fa-user-plus"></i> Create Account'
-        return
-      }
-      userId = data.user?.id
+    if (error) {
+      btn.disabled = false
+      btn.innerHTML = '<i class="fas fa-user-plus"></i> Create Account'
+      showToast(error.message, 'error')
+      return
     }
+
+    const userId = data.user?.id
 
     // Save full profile to login_information
     if (userId) {
       await supabase.from('login_information').upsert({
-        id: userId, name, regno, phone, gender, email,
+        id:         userId,
+        name,
+        regno:      regno || null,
+        phone,
+        gender,
+        email,
         created_at: new Date().toISOString(),
-        last_login: new Date().toISOString()
+        last_login: new Date().toISOString(),
       }, { onConflict: 'id' })
     }
 
     btn.disabled = false
     btn.innerHTML = '<i class="fas fa-user-plus"></i> Create Account'
 
-    showToast('Account created successfully! 🎉', 'success')
+    showToast('Account created! Welcome to PDKV College 🎉', 'success', 5000)
     closeModal('globalAuthModal')
-    clearOtpState(email)
+    clearOtpVerification(email)
     document.getElementById('globalSignupForm').reset()
-    document.getElementById('signup_otp').style.display = 'none'
-    document.getElementById('signupEmail').readOnly = false
-    const signupBadge = document.getElementById('signup_otp_badge')
-    if (signupBadge) signupBadge.style.display = 'none'
+    _resetOtpFieldUI('signup_otp', 'signupEmail')
   })
+}
+
+function _resetOtpFieldUI(wrapperId, emailInputId) {
+  const emailInput = document.getElementById(emailInputId)
+  if (emailInput) { emailInput.readOnly = false; emailInput.classList.remove('verified-email') }
+  const sendBtn = document.getElementById(wrapperId + '_sendBtn')
+  if (sendBtn) {
+    sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send OTP'
+    sendBtn.classList.remove('otp-trigger-verified')
+    sendBtn.disabled = false
+    sendBtn.style.boxShadow = ''
+  }
+  const chip = document.getElementById(wrapperId + '_chip')
+  if (chip) chip.classList.remove('otp-chip-visible')
+  const hint = document.getElementById(wrapperId + '_hint')
+  if (hint) hint.style.display = 'flex'
 }
 
 export function updateHeaderAuthUI() {
@@ -955,7 +1242,7 @@ export function updateHeaderAuthUI() {
     authBtns.forEach(b  => { b.style.display = 'none' })
     userChips.forEach(c => {
       c.style.display = 'inline-flex'
-      c.innerHTML = `<i class="fas fa-user-circle"></i> ${name}${regno ? ' · ' + regno : ''}`
+      c.innerHTML = `<i class="fas fa-user-circle"></i> ${_escHtml(name)}${regno ? ' · ' + _escHtml(regno) : ''}`
     })
     logoutBtns.forEach(b => { b.style.display = 'inline-flex' })
   } else {
@@ -965,11 +1252,15 @@ export function updateHeaderAuthUI() {
   }
 }
 
+function _escHtml(s) {
+  return String(s || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+}
+
 export function openAuthModal(tab = 'login') {
-  document.getElementById('signupTab')?.classList.remove('active')
-  document.getElementById('loginTab')?.classList.remove('active')
-  document.getElementById('signupPanel')?.classList.remove('active')
-  document.getElementById('loginPanel')?.classList.remove('active')
+  document.querySelectorAll('#globalAuthModal .auth-tab').forEach(t => t.classList.remove('active'))
+  document.querySelectorAll('#globalAuthModal .auth-tab-panel').forEach(p => p.classList.remove('active'))
   if (tab === 'signup') {
     document.getElementById('signupTab')?.classList.add('active')
     document.getElementById('signupPanel')?.classList.add('active')
@@ -989,7 +1280,7 @@ export async function logoutUser() {
   }
 }
 
-/* ── RIPPLE EFFECT ───────────────────────────────────────────── */
+// ── RIPPLE ────────────────────────────────────────────────────
 export function initRipple() {
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('.btn, .nav-link')
@@ -1008,14 +1299,14 @@ export function initRipple() {
   })
 }
 
-/* ── TILT CARDS ──────────────────────────────────────────────── */
+// ── TILT CARDS ────────────────────────────────────────────────
 export function initTiltCards(selector = '.fact-card, .qlink-card, .about-stat-card') {
   document.querySelectorAll(selector).forEach(card => {
     card.addEventListener('mousemove', (e) => {
       const rect = card.getBoundingClientRect()
       const dx   = (e.clientX - rect.left - rect.width  / 2) / (rect.width  / 2)
       const dy   = (e.clientY - rect.top  - rect.height / 2) / (rect.height / 2)
-      card.style.transform  = `translateY(-10px) rotateX(${-dy * 4}deg) rotateY(${dx * 4}deg) scale(1.02)`
+      card.style.transform  = `translateY(-10px) rotateX(${-dy*4}deg) rotateY(${dx*4}deg) scale(1.02)`
       card.style.transition = 'transform 0.12s ease'
     })
     card.addEventListener('mouseleave', () => {
@@ -1025,7 +1316,7 @@ export function initTiltCards(selector = '.fact-card, .qlink-card, .about-stat-c
   })
 }
 
-/* ── SKELETON NOTICES ────────────────────────────────────────── */
+// ── SKELETON NOTICES ──────────────────────────────────────────
 export function showSkeletonNotices(containerId = 'noticesList') {
   const c = document.getElementById(containerId)
   if (!c) return
@@ -1040,21 +1331,15 @@ export function showSkeletonNotices(containerId = 'noticesList') {
     </div>`).join('')
 }
 
-/* ── PAGE TRANSITIONS ────────────────────────────────────────── */
+// ── PAGE TRANSITIONS ──────────────────────────────────────────
 export function initPageTransitions() {
   const overlay = document.getElementById('pageTransition')
   if (!overlay) return
   document.querySelectorAll('a[href]').forEach(link => {
     const href = link.getAttribute('href')
-    if (
-      !href ||
-      href.startsWith('http')  ||
-      href.startsWith('#')     ||
-      href.startsWith('mailto:') ||
-      href.startsWith('tel:')    ||
-      href.startsWith('javascript:') ||
-      link.target === '_blank'
-    ) return
+    if (!href || href.startsWith('http') || href.startsWith('#') ||
+        href.startsWith('mailto:') || href.startsWith('tel:') ||
+        href.startsWith('javascript:') || link.target === '_blank') return
     link.addEventListener('click', (e) => {
       e.preventDefault()
       overlay.classList.add('leaving')
@@ -1063,17 +1348,16 @@ export function initPageTransitions() {
   })
 }
 
-/* ── UTILS ───────────────────────────────────────────────────── */
+// ── UTILS ─────────────────────────────────────────────────────
 export function formatNumber(n) { return Number(n).toLocaleString('en-IN') }
 
-/* ── FAST PROFILE PHOTO UPLOAD ───────────────────────────────── */
+// ── UPLOAD PHOTO ──────────────────────────────────────────────
 export async function uploadProfilePhoto(file, bucket, storagePath, imgSelectors = []) {
   if (!file) return null
-
   const localUrl = URL.createObjectURL(file)
-  imgSelectors.forEach(sel => {
+  imgSelectors.forEach(sel =>
     document.querySelectorAll(sel).forEach(img => { img.src = localUrl })
-  })
+  )
 
   let uploadFile = file
   if (file.size > 1_000_000 && file.type.startsWith('image/')) {
@@ -1086,18 +1370,13 @@ export async function uploadProfilePhoto(file, bucket, storagePath, imgSelectors
 
   URL.revokeObjectURL(localUrl)
 
-  if (error) {
-    showToast('Photo upload failed: ' + error.message, 'error')
-    return null
-  }
+  if (error) { showToast('Photo upload failed: ' + error.message, 'error'); return null }
 
   const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(storagePath)
   const finalUrl = `${publicUrl}?t=${Date.now()}`
-
-  imgSelectors.forEach(sel => {
+  imgSelectors.forEach(sel =>
     document.querySelectorAll(sel).forEach(img => { img.src = finalUrl })
-  })
-
+  )
   return finalUrl
 }
 
@@ -1126,53 +1405,54 @@ function _compressImage(file, maxDim, quality) {
   })
 }
 
-/* ── SAVE PROFILE ────────────────────────────────────────────── */
+// ── SAVE PROFILE ──────────────────────────────────────────────
 export async function saveProfile({
-  userId,
-  fields,
-  photoFile         = null,
-  photoBucket       = 'image_files',
-  photoPathFn       = (id) => `avatars/${id}.jpg`,
+  userId, fields,
+  photoFile = null, photoBucket = 'image_files',
+  photoPathFn = (id) => `avatars/${id}.jpg`,
   photoImgSelectors = [],
-  onSuccess         = null,
-  onError           = null
+  onSuccess = null, onError = null
 } = {}) {
   if (!userId) return false
 
   if (photoFile) {
-    const path = photoPathFn(userId)
-    const [photoUrl, { error: dbErr }] = await Promise.all([
-      uploadProfilePhoto(photoFile, photoBucket, path, photoImgSelectors),
-      supabase.from('login_information').upsert({ id: userId, ...fields })
-    ])
-
-    if (dbErr) {
-      showToast('Save failed: ' + dbErr.message, 'error')
-      onError?.(dbErr)
-      return false
-    }
-
+    const path     = photoPathFn(userId)
+    const photoUrl = await uploadProfilePhoto(photoFile, photoBucket, path, photoImgSelectors)
+    const { error: dbErr } = await supabase
+      .from('login_information')
+      .upsert({ id: userId, ...fields })
+    if (dbErr) { showToast('Save failed: ' + dbErr.message, 'error'); onError?.(dbErr); return false }
     if (photoUrl) {
-      supabase.from('login_information')
-        .update({ photo_url: photoUrl })
-        .eq('id', userId)
-        .catch(() => {})
+      supabase.from('login_information').update({ photo_url: photoUrl }).eq('id', userId).catch(() => {})
     }
-
     onSuccess?.(photoUrl)
   } else {
     const { error } = await supabase
       .from('login_information')
       .upsert({ id: userId, ...fields })
-
-    if (error) {
-      showToast('Save failed: ' + error.message, 'error')
-      onError?.(error)
-      return false
-    }
-
+    if (error) { showToast('Save failed: ' + error.message, 'error'); onError?.(error); return false }
     onSuccess?.(null)
   }
-
   return true
+}
+
+// ── buildOtpEmailField (compat for Courses.js injection) ──────
+export function buildOtpEmailField(fieldId, otpWrapperId, label = 'Email *', placeholder = 'your@email.com') {
+  return `
+    <div class="form-group">
+      <label class="form-label"><i class="fas fa-envelope"></i> ${label}</label>
+      <div class="otp-email-field-wrap">
+        <input type="email" id="${fieldId}" class="form-input" placeholder="${placeholder}" required autocomplete="email"/>
+        <button type="button" class="otp-send-trigger-btn" id="${otpWrapperId}_sendBtn"
+          onclick="pdkvSendOtp('${fieldId}','${otpWrapperId}')">
+          <i class="fas fa-paper-plane"></i> Send OTP
+        </button>
+      </div>
+      <span class="otp-not-verified-hint" id="${otpWrapperId}_hint">
+        <i class="fas fa-info-circle"></i> Verify your email with OTP first
+      </span>
+      <span class="otp-verified-chip" id="${otpWrapperId}_chip">
+        <i class="fas fa-check-circle"></i> Email Verified
+      </span>
+    </div>`
 }
