@@ -1,9 +1,4 @@
-// ================================================================
-// Teacher.js — Fixed Version
-// Fix 1: Always load classrooms from Supabase after login/profile render
-// Fix 2: Email OTP verification before saving teacher profile
-// Fix 3: Classroom cards properly clickable + realtime updates
-// ================================================================
+
 import { supabase } from './supabaseClient.js'
 import {
   initStickyHeader, initHamburger,

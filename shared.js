@@ -1,7 +1,4 @@
-// ============================================================
-// shared.js — PDKV College v6 (OTP Email Verification added)
-// All email inputs now require OTP verification before proceeding
-// ============================================================
+
 import { supabase } from './supabaseClient.js'
 import { injectSpeedInsights } from '@vercel/speed-insights'
 
@@ -111,7 +108,7 @@ export function buildOtpEmailField(fieldId, otpWrapperId, label = 'Email *', pla
         <div class="otp-info-msg"><i class="fas fa-info-circle"></i> A 6-digit OTP has been sent to your email. Enter it below.</div>
         <div class="otp-input-row">
           <input type="text" id="${otpWrapperId}_code" class="form-input otp-code-input" 
-            placeholder="Enter 6-digit OTP" maxlength="6" autocomplete="one-time-code"
+            placeholder="Enter 8-digit OTP" maxlength="8" autocomplete="one-time-code"
             oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
           <button type="button" class="btn-verify-otp" id="${otpWrapperId}_verifyBtn" onclick="pdkvVerifyOtp('${fieldId}','${otpWrapperId}')">
             <i class="fas fa-shield-check"></i> Verify
