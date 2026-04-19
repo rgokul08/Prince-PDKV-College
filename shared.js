@@ -172,8 +172,8 @@ window.pdkvVerifyOtp = async function(fieldId, wrapperId) {
   const email       = emailInput?.value?.trim()
   const token       = codeInput?.value?.trim()
 
-  if (!token || token.length !== 6) {
-    showToast('Please enter the 6-digit OTP.', 'warning')
+  if (!token || token.length !== 8) {
+    showToast('Please enter the 8-digit OTP.', 'warning')
     codeInput?.focus()
     return
   }
@@ -719,7 +719,7 @@ function _authModalHTML() {
                 <div class="otp-info-msg"><i class="fas fa-info-circle"></i> A 6-digit OTP has been sent to your email.</div>
                 <div class="otp-input-row">
                   <input type="text" id="signup_otp_code" class="form-input otp-code-input"
-                    placeholder="Enter 6-digit OTP" maxlength="6" autocomplete="one-time-code"
+                    placeholder="Enter 8-digit OTP" maxlength="8" autocomplete="one-time-code"
                     oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
                   <button type="button" class="btn-verify-otp" id="signup_otp_verifyBtn" onclick="pdkvVerifyOtp('signupEmail','signup_otp')">
                     <i class="fas fa-shield-check"></i> Verify
