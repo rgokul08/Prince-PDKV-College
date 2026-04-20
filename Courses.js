@@ -4,7 +4,7 @@ import {
   openModal, closeModal, initModalCloseHandlers,
   showToast, initAuth, openAuthModal, logoutUser,
   initRipple, initPageTransitions,
-  sendEmailOtp, verifyEmailOtp, isEmailOtpVerified, clearOtpState
+  injectOtpWidget, isEmailVerified, clearEmailVerified
 } from './shared.js'
 
 // ── COURSE DATA ───────────────────────────────────────────────
@@ -97,7 +97,7 @@ const courseData = {
     desc: '2-year full-time MBA program. Specializations in marketing, finance, and HR.',
     highlights: ['Marketing / Finance / HR', 'Industry Projects', 'Guest Lectures', 'Anna University Affiliated'],
     link: 'https://psvpec.in/mba/',
-    img: 'https://media.istockphoto.com/id/1159875854/photo/mba-with-man.jpg?s=612x612&w=0&k=20&c=fm3BxaCV0OksY-P-khvO7mv1jdWLYHFlYEPaHEvZlVo='
+    img: 'https://media.istockphoto.com/id/1159875854/photo/mba-with-man.jpg?s=612x612&w=0&k=20&c=fm3BxaCV0OksY-P6r8nP_khvO7mv1jdWLYHFlYEPaHEvZlVo='
   }
 }
 
@@ -181,6 +181,7 @@ function openCourseModal(id) {
 function initAdmissionForm() {
   const TOTAL_STEPS = 4
   let currentStep   = 1
+  let _otpInjected  = false   // track whether widget already injected
 
   function goToStep(step) {
     for (let i = 1; i <= TOTAL_STEPS; i++) {
@@ -204,7 +205,46 @@ function initAdmissionForm() {
 
     document.getElementById('admission')
       ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+    // Inject OTP widget once step 1 is visible (email field present in DOM)
+    if (step === 1 && !_otpInjected) {
+      setTimeout(() => _injectAdmissionOtp(), 80)
+    }
   }
+
+  // Inject OTP widget on the admission email field
+  function _injectAdmissionOtp() {
+    const emailInput = document.getElementById('adm-email')
+    if (!emailInput || document.getElementById('adm_email_otp_wrap')) return
+    _otpInjected = true
+
+    injectOtpWidget({
+      emailInputId: 'adm-email',
+      widgetId:     'adm_email_otp',
+      theme:        'light',
+      onVerified:   async (email) => {
+        // Update the verified note label if present
+        const note = document.getElementById('adm_email_verif_note')
+        if (note) {
+          note.innerHTML = '<i class="fas fa-check-circle" style="color:var(--accent)"></i> Email verified!'
+          note.style.color = 'var(--accent-dark)'
+        }
+      }
+    })
+
+    // Add a small verification hint below the email field group
+    const emailFg = emailInput.closest('.form-group')
+    if (emailFg && !document.getElementById('adm_email_verif_note')) {
+      const note = document.createElement('small')
+      note.id = 'adm_email_verif_note'
+      note.style.cssText = 'display:block;margin-top:6px;font-size:0.76rem;color:var(--text-muted);'
+      note.innerHTML = '<i class="fas fa-info-circle"></i> Click "Send OTP" to verify your email before proceeding'
+      emailFg.appendChild(note)
+    }
+  }
+
+  // Trigger injection immediately since step 1 is visible on load
+  setTimeout(() => _injectAdmissionOtp(), 200)
 
   const gv  = id => document.getElementById(id)?.value?.trim() || null
   const gn  = id => { const v = parseFloat(document.getElementById(id)?.value); return isNaN(v) ? null : v }
@@ -218,16 +258,18 @@ function initAdmissionForm() {
           !gv('adm-address') || !gv('adm-city') || !gv('adm-pincode')) {
         showToast('Please fill all required fields in Step 1.', 'warning'); return
       }
-      // Check OTP verification for admission form email
+
+      // ── OTP verification check for admission email ──
       const email = gv('adm-email')
-      if (!isEmailOtpVerified(email)) {
-        showToast('Please verify your email address with OTP before proceeding.', 'warning')
-        // Show OTP panel if not already shown
-        const panel = document.getElementById('adm_email_otp')
-        if (panel && panel.style.display === 'none') {
-          document.getElementById('adm_email_otp_sendBtn')?.click()
+      if (!isEmailVerified(email)) {
+        showToast('Please verify your email address with the OTP before proceeding.', 'warning')
+        // Scroll to OTP widget
+        const widget = document.getElementById('adm_email_otp')
+        if (widget) widget.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        else {
+          const emailEl = document.getElementById('adm-email')
+          emailEl?.scrollIntoView({ behavior: 'smooth', block: 'center' })
         }
-        document.getElementById('adm_email_otp_sendBtn')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
         return
       }
     }
@@ -256,9 +298,6 @@ function initAdmissionForm() {
       radio.closest('.adm-type-btn')?.classList.add('active')
     })
   })
-
-  // Inject OTP fields into the admission form email area
-  _injectAdmissionEmailOtp()
 
   const calcCutoff = () => {
     const stream    = document.getElementById('adm-stream')?.value || ''
@@ -290,6 +329,13 @@ function initAdmissionForm() {
 
     if (!document.getElementById('adm-declaration')?.checked) {
       showToast('Please agree to the declaration before submitting.', 'warning'); return
+    }
+
+    // Final email verification check before submit
+    const emailVal = gv('adm-email')
+    if (!isEmailVerified(emailVal)) {
+      showToast('Email verification required. Please go back to Step 1 and verify your email.', 'warning')
+      return
     }
 
     const submitBtn = document.getElementById('adm-submitBtn')
@@ -362,7 +408,8 @@ function initAdmissionForm() {
       return
     }
 
-    clearOtpState(payload.email)
+    // Clear email verification after successful submission
+    clearEmailVerified(payload.email)
 
     const safeName  = esc(savedApp.name || payload.name)
     const safeEmail = esc(savedApp.email || payload.email)
@@ -463,63 +510,6 @@ function initAdmissionForm() {
       <span class="adm-review-val">${esc(String(value || '—'))}</span>
     </div>`
   }
-}
-
-// Inject OTP verification widget after the email input in the admission form
-function _injectAdmissionEmailOtp() {
-  const emailInput = document.getElementById('adm-email')
-  if (!emailInput) return
-
-  // Wrap the email input in OTP row
-  const parent = emailInput.closest('.form-group')
-  if (!parent || parent.dataset.otpInjected) return
-  parent.dataset.otpInjected = 'true'
-
-  // Replace input with OTP-aware version
-  const originalInput = parent.querySelector('.form-input')
-  if (!originalInput) return
-
-  // Create OTP email row wrapper
-  const rowDiv = document.createElement('div')
-  rowDiv.className = 'otp-email-row'
-  parent.insertBefore(rowDiv, originalInput)
-  rowDiv.appendChild(originalInput)
-
-  const sendBtn = document.createElement('button')
-  sendBtn.type = 'button'
-  sendBtn.id = 'adm_email_otp_sendBtn'
-  sendBtn.className = 'btn-send-otp'
-  sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send OTP'
-  sendBtn.setAttribute('onclick', "pdkvSendOtp('adm-email','adm_email_otp')")
-  rowDiv.appendChild(sendBtn)
-
-  // OTP panel
-  const otpPanel = document.createElement('div')
-  otpPanel.id = 'adm_email_otp'
-  otpPanel.className = 'otp-verify-panel'
-  otpPanel.style.display = 'none'
-  otpPanel.innerHTML = `
-    <div class="otp-info-msg"><i class="fas fa-info-circle"></i> A 6-digit OTP has been sent to your email.</div>
-    <div class="otp-input-row">
-      <input type="text" id="adm_email_otp_code" class="form-input otp-code-input"
-        placeholder="Enter 6-digit OTP" maxlength="6" autocomplete="one-time-code"
-        oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
-      <button type="button" class="btn-verify-otp" id="adm_email_otp_verifyBtn"
-        onclick="pdkvVerifyOtp('adm-email','adm_email_otp')">
-        <i class="fas fa-shield-check"></i> Verify
-      </button>
-    </div>
-    <div class="otp-resend-row">
-      <span class="otp-timer" id="adm_email_otp_timer"></span>
-      <button type="button" class="otp-resend-btn" id="adm_email_otp_resendBtn"
-        onclick="pdkvResendOtp('adm-email','adm_email_otp')" style="display:none;">
-        <i class="fas fa-redo"></i> Resend OTP
-      </button>
-    </div>
-    <div class="otp-verified-badge" id="adm_email_otp_badge" style="display:none;">
-      <i class="fas fa-check-circle"></i> Email Verified!
-    </div>`
-  parent.appendChild(otpPanel)
 }
 
 function esc(s) {

@@ -1,17 +1,13 @@
 // ================================================================
 // Student.js — PDKV Student Portal v3 (debugged)
-// Fixes: null guards, realtime cleanup on re-login,
-//        achievement modal re-bind, stEdit null check,
-//        uploadImg error handling
-// TASK 3: Daily Attendance Breakdown — shows only last 7 days
-//         dynamically (rolling window, always current).
-//         Absent chips/details still show ALL absent days.
+// ADDED: OTP email verification on profile setup/edit email field
 // ================================================================
 import { supabase } from './supabaseClient.js'
 import {
   initStickyHeader, initHamburger, initScrollAnimations,
   showToast, initAuth, openAuthModal, logoutUser,
-  getCurrentUser, initRipple, initPageTransitions, initPasswordToggles
+  getCurrentUser, initRipple, initPageTransitions, initPasswordToggles,
+  injectOtpWidget, isEmailVerified, markEmailVerified
 } from './shared.js'
 
 const BUCKET     = 'image_files'
@@ -149,7 +145,6 @@ async function handleLogin(e) {
   btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing In…'
   hideMsg()
 
-  // Fetch credentials AND profile in parallel for speed
   const [credRes, profileRes] = await Promise.all([
     supabase.from('student_credentials').select('password').eq('register_no', regno).maybeSingle(),
     supabase.from('student_information').select('*').ilike('register_no', regno).maybeSingle()
@@ -186,7 +181,6 @@ function hideMsg() { const el = document.getElementById('loginMsg'); if (el) el.
 
 window.stLogout = () => {
   sessionStorage.removeItem(SESS_KEY); _regno = null
-  // FIX: always clean up realtime channel on logout
   if (_rtCh) { supabase.removeChannel(_rtCh); _rtCh = null }
   showSec('login')
   showToast('Logged out.', 'info')
@@ -278,7 +272,9 @@ async function renderSetup(regno, existingData) {
             <input class="sp-inp" value="${esc(regno)}" readonly /></div>
           <div class="sp-fg"><label>Full Name *</label>
             <input id="sp_name" class="sp-inp" value="${esc(d.name||'')}" placeholder="Your full name" required /></div>
-          <div class="sp-fg"><label>Email ID *</label>
+          <div class="sp-fg" id="sp_email_fg"><label>Email ID *
+            <span id="sp_email_verif_label" style="display:none;margin-left:6px;font-size:0.72rem;font-weight:800;padding:2px 8px;border-radius:50px;background:rgba(0,245,212,0.12);color:#00f5d4;border:1px solid rgba(0,245,212,0.25);"><i class="fas fa-check-circle"></i> Verified</span>
+          </label>
             <input id="sp_email" class="sp-inp" type="email" value="${esc(d.email||'')}" placeholder="your@email.com" required /></div>
           <div class="sp-fg"><label>Phone Number *</label>
             <input id="sp_phone" class="sp-inp" type="tel" value="${esc(d.phone||'')}" placeholder="+91 99999 99999" required /></div>
@@ -325,6 +321,37 @@ async function renderSetup(regno, existingData) {
 
   bindPreview('sp_file','sp_preview_wrap','sp_preview_img','sp_rm')
 
+  // ── Inject OTP widget on the email field ──
+  // If editing and email unchanged, pre-mark as verified
+  if (isEdit && d.email) {
+    markEmailVerified(d.email)
+  }
+
+  // Inject the OTP widget into the email form group
+  injectOtpWidget({
+    emailInputId: 'sp_email',
+    widgetId:     'sp_email_otp',
+    theme:        'dark-sp',
+    onVerified:   async (email) => {
+      // Show verified label next to field label
+      const lbl = document.getElementById('sp_email_verif_label')
+      if (lbl) lbl.style.display = 'inline'
+    }
+  })
+
+  // Watch email changes — update verified label
+  document.getElementById('sp_email')?.addEventListener('input', () => {
+    const lbl = document.getElementById('sp_email_verif_label')
+    const cur = document.getElementById('sp_email')?.value?.trim().toLowerCase()
+    if (lbl) lbl.style.display = isEmailVerified(cur) ? 'inline' : 'none'
+  })
+
+  // Pre-show verified label if editing with already-verified email
+  if (isEdit && d.email) {
+    const lbl = document.getElementById('sp_email_verif_label')
+    if (lbl) lbl.style.display = 'inline'
+  }
+
   document.getElementById('setupForm').addEventListener('submit', async ev => {
     ev.preventDefault()
     const btn = document.getElementById('setupBtn')
@@ -345,7 +372,15 @@ async function renderSetup(regno, existingData) {
       return
     }
 
-    // Only upload new image if a file was selected; otherwise keep existing
+    // ── OTP verification check ──
+    if (!isEmailVerified(email)) {
+      showToast('Please verify your email with OTP before saving.', 'warning')
+      btn.disabled = false; btn.innerHTML = `<i class="fas fa-save"></i> ${isEdit ? 'Update Profile' : 'Save Profile'}`
+      // Scroll to the OTP widget
+      document.getElementById('sp_email_otp')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
+    }
+
     let imgUrl = d.image_url || null
     if (document.getElementById('sp_file')?.files?.[0]) {
       const newUrl = await uploadImg('sp_file', ST_FOLDER, regno)
@@ -392,7 +427,6 @@ window.stCancelEdit = async () => {
   showSec('loading')
   const { data: stu } = await supabase.from('student_information')
     .select('*').ilike('register_no', _regno).maybeSingle()
-  // FIX: null guard — if profile missing, go to setup
   if (stu) { showSec('profile'); await renderProfile(stu); setupRT(_regno) }
   else     { showSec('setup'); await renderSetup(_regno, null) }
 }
@@ -471,9 +505,7 @@ function infoItem(ico, lbl, val) {
   </div></div>`
 }
 
-// ── TASK 3: ATTENDANCE ─────────────────────────────────────────
-// Daily breakdown: shows only last 7 days (rolling window from today)
-// Absent chips: shows ALL absent days (no date restriction)
+// ── ATTENDANCE ─────────────────────────────────────────────────
 async function loadAtt(regno) {
   const c = document.getElementById('attSec'); if (!c) return
   const { data } = await supabase.from('attendance_information')
@@ -507,35 +539,26 @@ async function loadAtt(regno) {
     warnCls = 'saw-bad'
   }
 
-  // TASK 3: All absent details — show every absent day without restriction
   const absArr = Array.isArray(data.absent_details) ? data.absent_details : []
 
-  // TASK 3: Daily breakdown — compute rolling last 7 days from today
   const periodStats = Array.isArray(data.period_stats) ? data.period_stats : []
-
-  // Get today's date as ISO string (YYYY-MM-DD)
   const todayISO = new Date().toISOString().split('T')[0]
-  // Compute the cutoff date = 7 days ago from today
   const cutoffDate = new Date()
-  cutoffDate.setDate(cutoffDate.getDate() - 6) // today + 6 days back = 7 days window
+  cutoffDate.setDate(cutoffDate.getDate() - 6)
   const cutoffISO = cutoffDate.toISOString().split('T')[0]
 
-  // TASK 3: Filter period_stats to only last 7 days (rolling window)
-  // If a record's date is within the last 7 days from today, include it
   const last7DaysStats = periodStats.filter(d => {
     if (!d.date) return false
-    const dateStr = d.date.split('T')[0] // handle both 'YYYY-MM-DD' and ISO datetime
+    const dateStr = d.date.split('T')[0]
     return dateStr >= cutoffISO && dateStr <= todayISO
   })
 
-  // Sort by date ascending for display
   last7DaysStats.sort((a, b) => {
     const da = (a.date || '').split('T')[0]
     const db = (b.date || '').split('T')[0]
     return da.localeCompare(db)
   })
 
-  // TASK 3: Build daily stats HTML — only last 7 days shown
   const dayStatsHtml = last7DaysStats.length ? `
     <div class="st-day-stats">
       <div class="st-abs-title" style="margin-bottom:10px;">
@@ -550,7 +573,6 @@ async function loadAtt(regno) {
           const dateStr = rawDate
             ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
             : d.date
-          // Highlight today
           const isToday = rawDate === todayISO
           return `<div class="st-day-card" style="${isToday ? 'border:1px solid var(--sp-cyan);background:rgba(0,245,212,0.06);' : ''}">
             <div class="st-day-date" style="${isToday ? 'color:var(--sp-cyan);font-weight:900;' : ''}">${dateStr}${isToday ? '<br><span style="font-size:0.55rem;color:var(--sp-cyan)">TODAY</span>' : ''}</div>
@@ -572,7 +594,6 @@ async function loadAtt(regno) {
       </div>
     </div>` : '')
 
-  // TASK 3: Absent chips — show ALL absent days (no date filter)
   const absHtml = absArr.length ? `
     <div class="st-abs-wrap">
       <div class="st-abs-title"><i class="fas fa-times-circle"></i> All Absent Sessions (${absArr.length})</div>
@@ -814,7 +835,6 @@ async function loadAchievements(regno) {
 
   bindPreview('ach_file','ach_preview_wrap','ach_preview_img','ach_rm')
 
-  // FIX: always re-wire the form after injecting HTML
   document.getElementById('achForm')?.addEventListener('submit', async ev => {
     ev.preventDefault()
     const btn   = document.getElementById('achSaveBtn')
@@ -873,7 +893,6 @@ function pendHTML(ico, bg, col, title, sub) {
 
 // ── REALTIME ──────────────────────────────────────────────────
 function setupRT(regno) {
-  // FIX: always remove old channel before creating new one
   if (_rtCh) { supabase.removeChannel(_rtCh); _rtCh = null }
 
   _rtCh = supabase.channel('st-rt-' + regno)
