@@ -1,14 +1,17 @@
 // ================================================================
-// Student.js — PDKV Student Portal v3 (OTP Email Verification)
-// Added: showOtpModal() called when student enters email in setup form.
-// All other code is unchanged.
+// Student.js — PDKV Student Portal v3 (debugged)
+// Fixes: null guards, realtime cleanup on re-login,
+//        achievement modal re-bind, stEdit null check,
+//        uploadImg error handling
+// TASK 3: Daily Attendance Breakdown — shows only last 7 days
+//         dynamically (rolling window, always current).
+//         Absent chips/details still show ALL absent days.
 // ================================================================
 import { supabase } from './supabaseClient.js'
 import {
   initStickyHeader, initHamburger, initScrollAnimations,
   showToast, initAuth, openAuthModal, logoutUser,
-  getCurrentUser, initRipple, initPageTransitions, initPasswordToggles,
-  showOtpModal, isEmailVerified, markEmailVerified
+  getCurrentUser, initRipple, initPageTransitions, initPasswordToggles
 } from './shared.js'
 
 const BUCKET     = 'image_files'
@@ -146,6 +149,7 @@ async function handleLogin(e) {
   btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing In…'
   hideMsg()
 
+  // Fetch credentials AND profile in parallel for speed
   const [credRes, profileRes] = await Promise.all([
     supabase.from('student_credentials').select('password').eq('register_no', regno).maybeSingle(),
     supabase.from('student_information').select('*').ilike('register_no', regno).maybeSingle()
@@ -162,10 +166,6 @@ async function handleLogin(e) {
   showToast(`Welcome! Signed in as ${regno}`, 'success')
 
   const stu = profileRes.data || null
-
-  // If student already has email, mark it as verified (they're logged in)
-  if (stu?.email) markEmailVerified(stu.email)
-
   if (!stu) {
     showSec('setup')
     await renderSetup(regno, null)
@@ -186,6 +186,7 @@ function hideMsg() { const el = document.getElementById('loginMsg'); if (el) el.
 
 window.stLogout = () => {
   sessionStorage.removeItem(SESS_KEY); _regno = null
+  // FIX: always clean up realtime channel on logout
   if (_rtCh) { supabase.removeChannel(_rtCh); _rtCh = null }
   showSec('login')
   showToast('Logged out.', 'info')
@@ -201,8 +202,6 @@ async function loadPortal(regno) {
     showToast('Error loading profile: ' + error.message, 'error')
     showSec('login'); return
   }
-
-  if (stu?.email) markEmailVerified(stu.email)
 
   if (!stu) {
     showSec('setup'); await renderSetup(regno, null)
@@ -232,19 +231,19 @@ function bindPreview(fileId, wrapId, imgId, rmId) {
     const f = document.getElementById(fileId).files[0]; if (!f) return
     const r = new FileReader()
     r.onload = ev => {
-      const img  = document.getElementById(imgId)
+      const img = document.getElementById(imgId)
       const wrap = document.getElementById(wrapId)
-      if (img)  img.src = ev.target.result
+      if (img) img.src = ev.target.result
       if (wrap) wrap.classList.add('show')
     }
     r.readAsDataURL(f)
   })
   document.getElementById(rmId)?.addEventListener('click', () => {
-    const fi   = document.getElementById(fileId)
-    const img  = document.getElementById(imgId)
+    const fi = document.getElementById(fileId)
+    const img = document.getElementById(imgId)
     const wrap = document.getElementById(wrapId)
-    if (fi)   fi.value = ''
-    if (img)  img.src  = ''
+    if (fi) fi.value = ''
+    if (img) img.src = ''
     if (wrap) wrap.classList.remove('show')
   })
 }
@@ -265,9 +264,6 @@ async function renderSetup(regno, existingData) {
   const yOpts = [1,2,3,4].map(y => `<option value="${y}" ${d.year == y ? 'selected' : ''}>${y}${['','st','nd','rd','th'][y]} Year</option>`).join('')
   const gOpts = ['Male','Female','Other'].map(g => `<option ${d.gender === g ? 'selected' : ''}>${g}</option>`).join('')
 
-  // Check if existing email is already verified
-  const emailAlreadyVerified = d.email && isEmailVerified(d.email)
-
   c.innerHTML = `
   <div class="st-wrap sp-up vis">
     <div class="sp-glass st-setup-card">
@@ -282,32 +278,8 @@ async function renderSetup(regno, existingData) {
             <input class="sp-inp" value="${esc(regno)}" readonly /></div>
           <div class="sp-fg"><label>Full Name *</label>
             <input id="sp_name" class="sp-inp" value="${esc(d.name||'')}" placeholder="Your full name" required /></div>
-
-          <div class="sp-fg" id="_spEmailFg">
-            <label>Email ID *
-              ${emailAlreadyVerified
-                ? `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:50px;background:rgba(76,175,80,0.12);border:1px solid rgba(76,175,80,0.28);color:#388E3C;font-size:0.72rem;font-weight:800;margin-left:6px;"><i class="fas fa-check-circle"></i> Verified</span>`
-                : ''
-              }
-            </label>
-            <input id="sp_email" class="sp-inp" type="email" value="${esc(d.email||'')}"
-                   placeholder="your@email.com" required
-                   ${emailAlreadyVerified ? 'style="border-color:#4CAF50;box-shadow:0 0 0 3px rgba(76,175,80,0.12);" readonly' : ''} />
-            <div id="_spEmailVerifyWrap" style="margin-top:7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-              <span id="_spEmailBadge" style="display:${emailAlreadyVerified ? 'inline-flex' : 'none'};align-items:center;gap:5px;padding:4px 12px;border-radius:50px;background:rgba(76,175,80,0.12);border:1px solid rgba(76,175,80,0.28);color:#388E3C;font-size:0.78rem;font-weight:800;">
-                <i class="fas fa-check-circle"></i> Email Verified
-              </span>
-              <button type="button" id="_spVerifyBtn"
-                style="display:${emailAlreadyVerified ? 'none' : 'inline-flex'};align-items:center;gap:6px;
-                       padding:7px 16px;border-radius:50px;
-                       background:linear-gradient(135deg,var(--sp-cyan),#00c4aa);
-                       color:var(--sp-bg);border:none;font-size:0.78rem;font-weight:800;
-                       cursor:pointer;font-family:inherit;transition:all 0.28s ease;">
-                <i class="fas fa-shield-alt"></i> Verify Email
-              </button>
-            </div>
-          </div>
-
+          <div class="sp-fg"><label>Email ID *</label>
+            <input id="sp_email" class="sp-inp" type="email" value="${esc(d.email||'')}" placeholder="your@email.com" required /></div>
           <div class="sp-fg"><label>Phone Number *</label>
             <input id="sp_phone" class="sp-inp" type="tel" value="${esc(d.phone||'')}" placeholder="+91 99999 99999" required /></div>
           <div class="sp-fg"><label>Gender *</label>
@@ -353,9 +325,6 @@ async function renderSetup(regno, existingData) {
 
   bindPreview('sp_file','sp_preview_wrap','sp_preview_img','sp_rm')
 
-  // ── Wire the Verify Email button ──
-  _wireStudentEmailVerify(d.email || '')
-
   document.getElementById('setupForm').addEventListener('submit', async ev => {
     ev.preventDefault()
     const btn = document.getElementById('setupBtn')
@@ -363,12 +332,12 @@ async function renderSetup(regno, existingData) {
 
     const g = id => document.getElementById(id)?.value?.trim() || null
 
-    const name   = g('sp_name')
-    const email  = g('sp_email')
-    const phone  = g('sp_phone')
-    const gender = g('sp_gender')
-    const dept   = g('sp_dept')
-    const year   = g('sp_year')
+    const name     = g('sp_name')
+    const email    = g('sp_email')
+    const phone    = g('sp_phone')
+    const gender   = g('sp_gender')
+    const dept     = g('sp_dept')
+    const year     = g('sp_year')
 
     if (!name || !email || !phone || !gender || !dept || !year) {
       showToast('Please fill all required (*) fields.', 'warning')
@@ -376,18 +345,7 @@ async function renderSetup(regno, existingData) {
       return
     }
 
-    // Email must be verified before saving
-    if (!isEmailVerified(email)) {
-      showToast('Please verify your email address before saving.', 'warning')
-      btn.disabled = false; btn.innerHTML = `<i class="fas fa-save"></i> ${isEdit ? 'Update Profile' : 'Save Profile'}`
-
-      await showOtpModal(email, async (verifiedEmail) => {
-        _markStudentEmailVerified(verifiedEmail)
-        showToast('Email verified! You can now save your profile.', 'success')
-      })
-      return
-    }
-
+    // Only upload new image if a file was selected; otherwise keep existing
     let imgUrl = d.image_url || null
     if (document.getElementById('sp_file')?.files?.[0]) {
       const newUrl = await uploadImg('sp_file', ST_FOLDER, regno)
@@ -419,70 +377,6 @@ async function renderSetup(regno, existingData) {
   })
 }
 
-// ── WIRE EMAIL VERIFY BUTTON (student setup) ──────────────────
-function _wireStudentEmailVerify(existingEmail) {
-  const verifyBtn  = document.getElementById('_spVerifyBtn')
-  const emailInput = document.getElementById('sp_email')
-  if (!verifyBtn || !emailInput) return
-
-  verifyBtn.addEventListener('click', async () => {
-    const email = (emailInput.value || '').trim()
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      showToast('Please enter a valid email address first.', 'warning')
-      emailInput.focus()
-      return
-    }
-
-    verifyBtn.disabled = true
-    verifyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…'
-
-    await showOtpModal(
-      email,
-      async (verifiedEmail) => {
-        _markStudentEmailVerified(verifiedEmail)
-        showToast('Email verified! ✅', 'success')
-      },
-      () => {
-        verifyBtn.disabled = false
-        verifyBtn.innerHTML = '<i class="fas fa-shield-alt"></i> Verify Email'
-      }
-    )
-
-    verifyBtn.disabled = false
-    verifyBtn.innerHTML = '<i class="fas fa-shield-alt"></i> Verify Email'
-  })
-
-  // Update verify button state when email input changes
-  emailInput.addEventListener('input', () => {
-    const email = emailInput.value.trim()
-    if (isEmailVerified(email)) {
-      _markStudentEmailVerified(email)
-    } else {
-      const badge = document.getElementById('_spEmailBadge')
-      if (badge) badge.style.display = 'none'
-      verifyBtn.style.display = 'inline-flex'
-      emailInput.readOnly = false
-      emailInput.style.borderColor = ''
-      emailInput.style.boxShadow   = ''
-    }
-  })
-}
-
-function _markStudentEmailVerified(email) {
-  const badge     = document.getElementById('_spEmailBadge')
-  const verifyBtn = document.getElementById('_spVerifyBtn')
-  const emailInp  = document.getElementById('sp_email')
-
-  if (badge)     { badge.style.display = 'inline-flex' }
-  if (verifyBtn) { verifyBtn.style.display = 'none' }
-  if (emailInp)  {
-    emailInp.value    = email
-    emailInp.readOnly = true
-    emailInp.style.borderColor = 'var(--sp-cyan)'
-    emailInp.style.boxShadow   = '0 0 0 3px rgba(0,245,212,0.15)'
-  }
-}
-
 // ── EDIT / CANCEL ─────────────────────────────────────────────
 window.stEdit = async () => {
   if (!_regno) return
@@ -498,6 +392,7 @@ window.stCancelEdit = async () => {
   showSec('loading')
   const { data: stu } = await supabase.from('student_information')
     .select('*').ilike('register_no', _regno).maybeSingle()
+  // FIX: null guard — if profile missing, go to setup
   if (stu) { showSec('profile'); await renderProfile(stu); setupRT(_regno) }
   else     { showSec('setup'); await renderSetup(_regno, null) }
 }
@@ -576,7 +471,9 @@ function infoItem(ico, lbl, val) {
   </div></div>`
 }
 
-// ── ATTENDANCE ────────────────────────────────────────────────
+// ── TASK 3: ATTENDANCE ─────────────────────────────────────────
+// Daily breakdown: shows only last 7 days (rolling window from today)
+// Absent chips: shows ALL absent days (no date restriction)
 async function loadAtt(regno) {
   const c = document.getElementById('attSec'); if (!c) return
   const { data } = await supabase.from('attendance_information')
@@ -610,18 +507,35 @@ async function loadAtt(regno) {
     warnCls = 'saw-bad'
   }
 
+  // TASK 3: All absent details — show every absent day without restriction
   const absArr = Array.isArray(data.absent_details) ? data.absent_details : []
+
+  // TASK 3: Daily breakdown — compute rolling last 7 days from today
   const periodStats = Array.isArray(data.period_stats) ? data.period_stats : []
-  const todayISO  = new Date().toISOString().split('T')[0]
-  const cutoffDate = new Date(); cutoffDate.setDate(cutoffDate.getDate() - 6)
+
+  // Get today's date as ISO string (YYYY-MM-DD)
+  const todayISO = new Date().toISOString().split('T')[0]
+  // Compute the cutoff date = 7 days ago from today
+  const cutoffDate = new Date()
+  cutoffDate.setDate(cutoffDate.getDate() - 6) // today + 6 days back = 7 days window
   const cutoffISO = cutoffDate.toISOString().split('T')[0]
 
+  // TASK 3: Filter period_stats to only last 7 days (rolling window)
+  // If a record's date is within the last 7 days from today, include it
   const last7DaysStats = periodStats.filter(d => {
     if (!d.date) return false
-    const dateStr = d.date.split('T')[0]
+    const dateStr = d.date.split('T')[0] // handle both 'YYYY-MM-DD' and ISO datetime
     return dateStr >= cutoffISO && dateStr <= todayISO
-  }).sort((a, b) => (a.date||'').localeCompare(b.date||''))
+  })
 
+  // Sort by date ascending for display
+  last7DaysStats.sort((a, b) => {
+    const da = (a.date || '').split('T')[0]
+    const db = (b.date || '').split('T')[0]
+    return da.localeCompare(db)
+  })
+
+  // TASK 3: Build daily stats HTML — only last 7 days shown
   const dayStatsHtml = last7DaysStats.length ? `
     <div class="st-day-stats">
       <div class="st-abs-title" style="margin-bottom:10px;">
@@ -633,7 +547,10 @@ async function loadAtt(regno) {
           const pctD  = d.total > 0 ? ((d.present / d.total) * 100).toFixed(0) : 0
           const colD  = pctD >= 75 ? 'var(--sp-green)' : pctD >= 50 ? 'var(--sp-gold)' : 'var(--sp-red)'
           const rawDate = (d.date || '').split('T')[0]
-          const dateStr = rawDate ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : d.date
+          const dateStr = rawDate
+            ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+            : d.date
+          // Highlight today
           const isToday = rawDate === todayISO
           return `<div class="st-day-card" style="${isToday ? 'border:1px solid var(--sp-cyan);background:rgba(0,245,212,0.06);' : ''}">
             <div class="st-day-date" style="${isToday ? 'color:var(--sp-cyan);font-weight:900;' : ''}">${dateStr}${isToday ? '<br><span style="font-size:0.55rem;color:var(--sp-cyan)">TODAY</span>' : ''}</div>
@@ -643,15 +560,28 @@ async function loadAtt(regno) {
           </div>`
         }).join('')}
       </div>
-    </div>` : ''
+    </div>` : (periodStats.length > 0 ? `
+    <div class="st-day-stats">
+      <div class="st-abs-title" style="margin-bottom:10px;color:var(--sp-muted);">
+        <i class="fas fa-chart-bar"></i> Daily Attendance — Last 7 Days
+      </div>
+      <div style="padding:16px;text-align:center;color:var(--sp-muted);font-size:0.84rem;
+        background:rgba(255,255,255,0.03);border-radius:12px;border:1px dashed rgba(255,255,255,0.1);">
+        <i class="fas fa-calendar-times" style="font-size:1.5rem;display:block;margin-bottom:8px;opacity:0.4;"></i>
+        No attendance records in the last 7 days.
+      </div>
+    </div>` : '')
 
+  // TASK 3: Absent chips — show ALL absent days (no date filter)
   const absHtml = absArr.length ? `
     <div class="st-abs-wrap">
       <div class="st-abs-title"><i class="fas fa-times-circle"></i> All Absent Sessions (${absArr.length})</div>
       <div class="st-abs-chips">
         ${absArr.map(d => {
           const rawDate = d.date ? d.date.split('T')[0] : null
-          const dateStr = rawDate ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'
+          const dateStr = rawDate
+            ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })
+            : '—'
           const subjStr = d.subject_name ? ` · ${d.subject_name}` : ''
           return `<span class="st-abs-chip"><i class="fas fa-calendar-times"></i>${dateStr}${d.period ? ` · P${d.period}` : ''}${subjStr}</span>`
         }).join('')}
@@ -808,7 +738,7 @@ async function loadAchievements(regno) {
       </div>`
     : `<div class="st-ach-grid">
         ${data.map(a => {
-          const tb      = typeBadge[a.achievement_type || 'general'] || typeBadge.general
+          const tb     = typeBadge[a.achievement_type || 'general'] || typeBadge.general
           const certBtn = a.certificate_url
             ? `<a href="${esc(a.certificate_url)}" target="_blank" rel="noopener" class="st-ach-cert-btn">
                 <i class="fas fa-certificate"></i> View Certificate</a>` : ''
@@ -839,6 +769,7 @@ async function loadAchievements(regno) {
     </button>
   </div>
 
+  <!-- Achievement Modal -->
   <div id="achModal" class="sp-modal-overlay" style="display:none">
     <div class="sp-modal-box">
       <div class="sp-modal-hdr">
@@ -883,6 +814,7 @@ async function loadAchievements(regno) {
 
   bindPreview('ach_file','ach_preview_wrap','ach_preview_img','ach_rm')
 
+  // FIX: always re-wire the form after injecting HTML
   document.getElementById('achForm')?.addEventListener('submit', async ev => {
     ev.preventDefault()
     const btn   = document.getElementById('achSaveBtn')
@@ -941,6 +873,7 @@ function pendHTML(ico, bg, col, title, sub) {
 
 // ── REALTIME ──────────────────────────────────────────────────
 function setupRT(regno) {
+  // FIX: always remove old channel before creating new one
   if (_rtCh) { supabase.removeChannel(_rtCh); _rtCh = null }
 
   _rtCh = supabase.channel('st-rt-' + regno)
