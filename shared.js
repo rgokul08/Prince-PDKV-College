@@ -2,7 +2,7 @@
 // shared.js — PDKV College v5 (OTP Email Verification)
 // CHANGED: Auth modal now uses 8-digit OTP email verification
 //          via Supabase signInWithOtp / verifyOtp.
-//          All other code is unchanged.
+//          Exported OTP helpers for profile/admission forms.
 // ============================================================
 import { supabase } from './supabaseClient.js'
 import { injectSpeedInsights } from '@vercel/speed-insights'
@@ -227,14 +227,11 @@ export function getCurrentUser() { return _currentUser }
 export function getUserProfile() { return _userProfile }
 
 /* ── OTP AUTH STATE ──────────────────────────────────────────── */
-// Tracks which step we are on: 'email' | 'otp'
-// And which mode: 'login' | 'signup'
-// signup extra data stored until OTP verified
 const _otpState = {
-  step:       'email',   // 'email' or 'otp'
-  mode:       'login',   // 'login' or 'signup'
+  step:       'email',
+  mode:       'login',
   email:      '',
-  signupData: null,      // { name, phone, gender, regno }
+  signupData: null,
   resendTimer: null,
   resendSecs:  0
 }
@@ -299,13 +296,11 @@ function _authModalHTML() {
         <button class="modal-close" aria-label="Close" id="_authClose">&times;</button>
       </div>
       <div class="modal-body" id="_authModalBody">
-        <!-- Dynamically rendered by _renderAuthStep() -->
       </div>
     </div>
   </div>
 
   <style>
-    /* ── OTP specific styles injected once ── */
     .otp-email-display {
       background: rgba(76,175,80,0.07);
       border: 1px solid rgba(76,175,80,0.22);
@@ -448,6 +443,305 @@ function _authModalHTML() {
       line-height: 1.55;
       margin-top: 8px;
     }
+
+    /* ── Inline OTP widget styles (for profile/admission forms) ── */
+    .pdkv-otp-widget {
+      margin-top: 10px;
+      border: 1.5px solid rgba(76,175,80,0.22);
+      border-radius: 14px;
+      padding: 16px 18px;
+      background: rgba(76,175,80,0.04);
+      animation: fadeInUp 0.35s ease both;
+    }
+    @keyframes fadeInUp {
+      from { opacity:0; transform:translateY(8px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .pdkv-otp-widget .otp-info {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .pdkv-otp-widget .otp-info i { color: var(--accent); }
+    .pdkv-otp-widget .otp-digits-row {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .pdkv-otp-widget .otp-d {
+      width: 40px;
+      height: 48px;
+      border: 2px solid var(--border);
+      border-radius: 9px;
+      font-size: 1.3rem;
+      font-weight: 800;
+      text-align: center;
+      font-family: 'Poppins', monospace;
+      color: var(--primary);
+      background: white;
+      outline: none;
+      transition: all 0.2s ease;
+      caret-color: transparent;
+    }
+    .pdkv-otp-widget .otp-d:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(76,175,80,0.12);
+      transform: scale(1.05);
+    }
+    .pdkv-otp-widget .otp-d.filled {
+      border-color: var(--accent2);
+      background: rgba(33,150,243,0.05);
+      color: var(--accent2-dark);
+    }
+    .pdkv-otp-widget .otp-d.error {
+      border-color: var(--danger);
+      background: rgba(244,67,54,0.05);
+      animation: otpShake 0.35s ease;
+    }
+    .pdkv-otp-widget .otp-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .pdkv-otp-widget .otp-verify-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 20px;
+      border-radius: 50px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+      color: white;
+      font-size: 0.86rem;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      font-family: var(--font-body);
+      transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .pdkv-otp-widget .otp-verify-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(76,175,80,0.35);
+    }
+    .pdkv-otp-widget .otp-verify-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .pdkv-otp-widget .otp-resend-sm {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+    .pdkv-otp-widget .otp-resend-sm button {
+      background: none; border: none;
+      color: var(--accent2); font-weight: 700;
+      cursor: pointer; font-size: 0.78rem;
+      font-family: var(--font-body);
+      text-decoration: underline;
+    }
+    .pdkv-otp-widget .otp-resend-sm button:disabled {
+      color: var(--text-muted); text-decoration: none; cursor: default;
+    }
+    .pdkv-otp-verified-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 50px;
+      background: rgba(76,175,80,0.10);
+      border: 1.5px solid rgba(76,175,80,0.28);
+      color: var(--accent-dark);
+      font-size: 0.82rem;
+      font-weight: 700;
+      margin-top: 8px;
+      animation: fadeInUp 0.3s ease both;
+    }
+    .email-send-otp-row {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .email-send-otp-row input {
+      flex: 1;
+    }
+    .btn-send-otp-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0 16px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, var(--accent2), var(--accent2-dark));
+      color: white;
+      font-size: 0.82rem;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      font-family: var(--font-body);
+      white-space: nowrap;
+      transition: all 0.28s ease;
+      flex-shrink: 0;
+    }
+    .btn-send-otp-inline:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(33,150,243,0.35);
+    }
+    .btn-send-otp-inline:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    /* Dark theme variants for Student/Teacher portals */
+    .sp-otp-widget, .tc-otp-widget {
+      margin-top: 10px;
+      border: 1.5px solid rgba(0,245,212,0.22);
+      border-radius: 14px;
+      padding: 16px 18px;
+      background: rgba(0,245,212,0.04);
+      animation: fadeInUp 0.35s ease both;
+    }
+    .tc-otp-widget {
+      border-color: rgba(245,158,11,0.22);
+      background: rgba(245,158,11,0.04);
+    }
+    .sp-otp-widget .otp-info, .tc-otp-widget .otp-info {
+      font-size: 0.82rem;
+      color: rgba(255,255,255,0.55);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .sp-otp-widget .otp-digits-row, .tc-otp-widget .otp-digits-row {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .sp-otp-widget .otp-d, .tc-otp-widget .otp-d {
+      width: 40px;
+      height: 48px;
+      border: 2px solid rgba(255,255,255,0.12);
+      border-radius: 9px;
+      font-size: 1.3rem;
+      font-weight: 800;
+      text-align: center;
+      font-family: 'Space Mono', monospace;
+      color: #fff;
+      background: rgba(255,255,255,0.05);
+      outline: none;
+      transition: all 0.2s ease;
+      caret-color: transparent;
+    }
+    .sp-otp-widget .otp-d:focus {
+      border-color: #00f5d4;
+      box-shadow: 0 0 0 3px rgba(0,245,212,0.15);
+      transform: scale(1.05);
+    }
+    .tc-otp-widget .otp-d:focus {
+      border-color: #f59e0b;
+      box-shadow: 0 0 0 3px rgba(245,158,11,0.15);
+      transform: scale(1.05);
+    }
+    .sp-otp-widget .otp-d.filled { border-color: rgba(0,245,212,0.5); background: rgba(0,245,212,0.08); }
+    .tc-otp-widget .otp-d.filled { border-color: rgba(245,158,11,0.5); background: rgba(245,158,11,0.08); }
+    .sp-otp-widget .otp-d.error, .tc-otp-widget .otp-d.error {
+      border-color: #f87171;
+      background: rgba(248,113,113,0.08);
+      animation: otpShake 0.35s ease;
+    }
+    .sp-otp-widget .otp-actions, .tc-otp-widget .otp-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .sp-otp-widget .otp-verify-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 9px 20px; border-radius: 50px;
+      background: linear-gradient(135deg, #00f5d4, #00c4aa);
+      color: #020c1b; font-size: 0.86rem; font-weight: 800;
+      border: none; cursor: pointer; font-family: 'Plus Jakarta Sans', sans-serif;
+      transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .tc-otp-widget .otp-verify-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 9px 20px; border-radius: 50px;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #06080f; font-size: 0.86rem; font-weight: 800;
+      border: none; cursor: pointer; font-family: 'Mulish', sans-serif;
+      transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .sp-otp-widget .otp-verify-btn:hover:not(:disabled),
+    .tc-otp-widget .otp-verify-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(0,0,0,0.3);
+    }
+    .sp-otp-widget .otp-verify-btn:disabled,
+    .tc-otp-widget .otp-verify-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .sp-otp-widget .otp-resend-sm, .tc-otp-widget .otp-resend-sm {
+      font-size: 0.76rem; color: rgba(255,255,255,0.4);
+    }
+    .sp-otp-widget .otp-resend-sm button {
+      background: none; border: none;
+      color: #00f5d4; font-weight: 700;
+      cursor: pointer; font-size: 0.76rem;
+      font-family: 'Plus Jakarta Sans', sans-serif; text-decoration: underline;
+    }
+    .tc-otp-widget .otp-resend-sm button {
+      background: none; border: none;
+      color: #f59e0b; font-weight: 700;
+      cursor: pointer; font-size: 0.76rem;
+      font-family: 'Mulish', sans-serif; text-decoration: underline;
+    }
+    .sp-otp-widget .otp-resend-sm button:disabled,
+    .tc-otp-widget .otp-resend-sm button:disabled {
+      color: rgba(255,255,255,0.28); text-decoration: none; cursor: default;
+    }
+    .sp-otp-verified-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 50px;
+      background: rgba(0,245,212,0.10);
+      border: 1.5px solid rgba(0,245,212,0.28);
+      color: #00f5d4; font-size: 0.82rem; font-weight: 700;
+      margin-top: 8px; animation: fadeInUp 0.3s ease both;
+    }
+    .tc-otp-verified-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 50px;
+      background: rgba(245,158,11,0.10);
+      border: 1.5px solid rgba(245,158,11,0.28);
+      color: #f59e0b; font-size: 0.82rem; font-weight: 700;
+      margin-top: 8px; animation: fadeInUp 0.3s ease both;
+    }
+    .sp-email-row, .tc-email-row {
+      display: flex; gap: 8px; align-items: stretch;
+    }
+    .sp-email-row input, .tc-email-row input { flex: 1; }
+    .sp-send-otp-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 0 14px; border-radius: var(--sp-r, 16px);
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+      color: white; font-size: 0.80rem; font-weight: 800;
+      border: none; cursor: pointer;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      white-space: nowrap; flex-shrink: 0;
+      transition: all 0.28s ease;
+    }
+    .sp-send-otp-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59,130,246,0.4); }
+    .sp-send-otp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .tc-send-otp-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 0 14px; border-radius: 11px;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #06080f; font-size: 0.80rem; font-weight: 800;
+      border: none; cursor: pointer;
+      font-family: 'Mulish', sans-serif;
+      white-space: nowrap; flex-shrink: 0;
+      transition: all 0.28s ease;
+    }
+    .tc-send-otp-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(245,158,11,0.4); }
+    .tc-send-otp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   </style>`
 }
 
@@ -527,7 +821,6 @@ function _renderEmailStep(mode) {
       A secure 8-digit OTP will be sent to your email
     </p>`
 
-  // Bind form
   document.getElementById('_authEmailForm').addEventListener('submit', _handleEmailSubmit)
   document.getElementById('_authEmail')?.focus()
 }
@@ -644,7 +937,6 @@ function _bindOtpInputs() {
       if (e.key === 'Enter') _triggerOtpVerify(digits)
     })
 
-    // Handle paste — distribute digits across boxes
     inp.addEventListener('paste', (e) => {
       e.preventDefault()
       const pasted = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '')
@@ -730,7 +1022,6 @@ async function _handleEmailSubmit(e) {
     return
   }
 
-  // Signup extra validation
   if (_otpState.mode === 'signup') {
     const name   = document.getElementById('_authName')?.value?.trim()
     const phone  = document.getElementById('_authPhone')?.value?.trim()
@@ -752,12 +1043,10 @@ async function _handleEmailSubmit(e) {
   const btn = document.getElementById('_authEmailBtn')
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…' }
 
-  // Send OTP via Supabase — signInWithOtp sends a 6-digit code by default
-  // We request the token_hash flow so we can verify it ourselves
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      shouldCreateUser: true,   // create user if doesn't exist
+      shouldCreateUser: true,
       emailRedirectTo: window.location.origin
     }
   })
@@ -784,12 +1073,9 @@ async function _triggerOtpVerify(digits) {
   const btn = document.getElementById('_otpVerifyBtn')
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying…' }
 
-  // Supabase OTP is 6 digits — if user enters 8 digits (padded), try both 6 and 8
-  // We try the last 6 digits and the full 8 digits
   let verifyError = null
   let verifySession = null
 
-  // Attempt 1: use the full entered OTP (works if Supabase ever sends 8-digit)
   const attempt1 = await supabase.auth.verifyOtp({
     email: _otpState.email,
     token: otp,
@@ -797,7 +1083,6 @@ async function _triggerOtpVerify(digits) {
   })
 
   if (attempt1.error) {
-    // Attempt 2: use only the last 6 digits (standard Supabase OTP length)
     const attempt2 = await supabase.auth.verifyOtp({
       email: _otpState.email,
       token: otp.slice(-6),
@@ -820,7 +1105,6 @@ async function _triggerOtpVerify(digits) {
     return
   }
 
-  // OTP verified successfully — save to login_information
   const user = verifySession?.user || (await supabase.auth.getUser()).data?.user
   if (user) {
     _currentUser = user
@@ -839,21 +1123,19 @@ async function _triggerOtpVerify(digits) {
 
 /* ── SAVE TO login_information TABLE ─────────────────────────── */
 async function _saveLoginInformation(user) {
-  const existingData = _otpState.signupData   // set only in signup mode
+  const existingData = _otpState.signupData
   const profileData  = {
     id:    user.id,
     email: user.email
   }
 
   if (existingData) {
-    // New signup — save all fields
     profileData.name   = existingData.name
     profileData.phone  = existingData.phone
     profileData.gender = existingData.gender
     profileData.regno  = existingData.regno || ''
   }
 
-  // Check if record already exists
   const { data: existing } = await supabase
     .from('login_information')
     .select('id, name, phone, gender, regno')
@@ -861,7 +1143,6 @@ async function _saveLoginInformation(user) {
     .maybeSingle()
 
   if (existing) {
-    // Record exists — only update if we have new signup data
     if (existingData) {
       await supabase.from('login_information').update({
         name:   existingData.name,
@@ -872,7 +1153,6 @@ async function _saveLoginInformation(user) {
     }
     _userProfile = { ...existing, ...profileData }
   } else {
-    // New record
     const { data: inserted } = await supabase
       .from('login_information')
       .upsert(profileData, { onConflict: 'id' })
@@ -899,7 +1179,7 @@ window._authGoBack = () => {
   _renderEmailStep(_otpState.mode)
 }
 
-/* ── SWITCH MODE (login ↔ signup) ─────────────────────────────── */
+/* ── SWITCH MODE ─────────────────────────────────────────────── */
 window._authSwitchMode = (mode) => {
   _otpState.signupData = null
   _renderEmailStep(mode)
@@ -914,13 +1194,12 @@ function _resetOtpState() {
   _otpState.mode       = 'login'
 }
 
-/* ── WIRE FORMS (close btn only — content is dynamic) ────────── */
+/* ── WIRE FORMS ──────────────────────────────────────────────── */
 function _wireAuthForms() {
   document.getElementById('_authClose')?.addEventListener('click', () => {
     closeModal('globalAuthModal')
     _resetOtpState()
   })
-  // Close on overlay click resets state too
   document.getElementById('globalAuthModal')?.addEventListener('click', (e) => {
     if (e.target.id === 'globalAuthModal') _resetOtpState()
   })
@@ -1154,26 +1433,337 @@ export async function saveProfile({
   return true
 }
 
-/* ── EMAIL OTP STUB FUNCTIONS (for admission form) ─────────── */
-// Note: These are stub implementations to prevent build errors
-// Actual OTP verification logic should be implemented as needed
-const _emailOtpState = {}
+/* ══════════════════════════════════════════════════════════════
+   INLINE OTP WIDGET — for profile & admission email fields
+   Used by: Student.js (profile setup), Courses.js (admission),
+            Teacher.js already has its own via initiateOtp()
+   ══════════════════════════════════════════════════════════════ */
 
+// Track verification state per email
+const _verifiedEmails = new Map()  // email -> true
+
+/**
+ * Inject an OTP send button next to a form email input, and
+ * render the OTP entry widget below it on send.
+ *
+ * @param {object} opts
+ *   emailInputId  - id of the <input type="email"> element
+ *   widgetId      - id to give the injected widget div
+ *   theme         - 'light' | 'dark-sp' | 'dark-tc'
+ *   onVerified    - async callback() called after OTP verified
+ */
+export function injectOtpWidget({ emailInputId, widgetId, theme = 'light', onVerified }) {
+  const emailInput = document.getElementById(emailInputId)
+  if (!emailInput || document.getElementById(widgetId + '_wrap')) return
+
+  // Wrap input + send button
+  const parent = emailInput.parentElement
+  const wrapper = document.createElement('div')
+  const rowClass = theme === 'dark-sp' ? 'sp-email-row' : theme === 'dark-tc' ? 'tc-email-row' : 'email-send-otp-row'
+  wrapper.className = rowClass
+  wrapper.id = widgetId + '_wrap'
+
+  parent.insertBefore(wrapper, emailInput)
+  wrapper.appendChild(emailInput)
+
+  const sendBtn = document.createElement('button')
+  sendBtn.type = 'button'
+  sendBtn.id = widgetId + '_sendBtn'
+  const btnClass = theme === 'dark-sp' ? 'sp-send-otp-btn' : theme === 'dark-tc' ? 'tc-send-otp-btn' : 'btn-send-otp-inline'
+  sendBtn.className = btnClass
+  sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send OTP'
+  wrapper.appendChild(sendBtn)
+
+  // Widget container (shown after send)
+  const widgetDiv = document.createElement('div')
+  widgetDiv.id = widgetId
+  widgetDiv.style.display = 'none'
+  parent.appendChild(widgetDiv)
+
+  // Verified badge (shown after verify)
+  const badge = document.createElement('div')
+  badge.id = widgetId + '_badge'
+  badge.style.display = 'none'
+  const badgeClass = theme === 'dark-sp' ? 'sp-otp-verified-badge' : theme === 'dark-tc' ? 'tc-otp-verified-badge' : 'pdkv-otp-verified-badge'
+  badge.className = badgeClass
+  badge.innerHTML = '<i class="fas fa-check-circle"></i> Email Verified!'
+  parent.appendChild(badge)
+
+  // Track timer per widget
+  let _timer = null
+  let _resendSecs = 0
+
+  // Reset verification when email changes
+  emailInput.addEventListener('input', () => {
+    const cur = emailInput.value.trim().toLowerCase()
+    if (!_verifiedEmails.has(cur)) {
+      badge.style.display = 'none'
+      sendBtn.disabled = false
+      sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send OTP'
+      widgetDiv.style.display = 'none'
+    } else {
+      _showVerified()
+    }
+  })
+
+  function _showVerified() {
+    widgetDiv.style.display = 'none'
+    badge.style.display = 'inline-flex'
+    sendBtn.disabled = true
+    sendBtn.innerHTML = '<i class="fas fa-check"></i> Verified'
+  }
+
+  async function _sendOtp() {
+    const email = emailInput.value.trim().toLowerCase()
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showToast('Please enter a valid email address first.', 'warning')
+      emailInput.focus()
+      return
+    }
+
+    // Already verified for this email
+    if (_verifiedEmails.get(email)) { _showVerified(); return }
+
+    sendBtn.disabled = true
+    sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true, emailRedirectTo: window.location.origin }
+    })
+
+    if (error) {
+      sendBtn.disabled = false
+      sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send OTP'
+      showToast('Failed to send OTP: ' + error.message, 'error')
+      return
+    }
+
+    showToast('OTP sent to ' + email + '! Check your inbox 📬', 'success', 5000)
+    sendBtn.innerHTML = '<i class="fas fa-redo"></i> Resend'
+    sendBtn.disabled = false
+
+    _renderWidget(email)
+  }
+
+  function _renderWidget(email) {
+    const widgetClass = theme === 'dark-sp' ? 'sp-otp-widget' : theme === 'dark-tc' ? 'tc-otp-widget' : 'pdkv-otp-widget'
+    const emailShort = email.length > 30 ? email.slice(0, 10) + '…' + email.slice(email.lastIndexOf('@')) : email
+
+    widgetDiv.style.display = 'block'
+    widgetDiv.innerHTML = `
+      <div class="${widgetClass}">
+        <div class="otp-info">
+          <i class="fas fa-envelope-open-text"></i>
+          <span>Enter the 8-digit code sent to <strong>${emailShort}</strong></span>
+        </div>
+        <div class="otp-digits-row" id="${widgetId}_digits">
+          ${Array.from({length:8}, (_,i) => `
+            <input type="text" inputmode="numeric" maxlength="1"
+                   class="otp-d" id="${widgetId}_d${i}"
+                   autocomplete="${i===0?'one-time-code':'off'}"
+                   aria-label="OTP digit ${i+1}"/>`).join('')}
+        </div>
+        <div id="${widgetId}_err" style="display:none;text-align:center;color:#ef4444;font-size:0.78rem;font-weight:700;margin-bottom:8px;"></div>
+        <div class="otp-actions">
+          <button type="button" class="otp-verify-btn" id="${widgetId}_verifyBtn">
+            <i class="fas fa-shield-check"></i> Verify
+          </button>
+          <div class="otp-resend-sm">
+            <span id="${widgetId}_timer">Resend in <strong id="${widgetId}_sec">60</strong>s</span>
+            <button type="button" id="${widgetId}_resendBtn" style="display:none;" onclick="_pdkvResend_${widgetId}()">Resend</button>
+          </div>
+        </div>
+        <p style="font-size:0.72rem;color:${theme==='light'?'var(--text-muted)':'rgba(255,255,255,0.38)'};text-align:center;margin-top:10px;line-height:1.5;">
+          <i class="fas fa-info-circle"></i> Check spam/junk. Code expires in 10 minutes.
+        </p>
+      </div>`
+
+    // Bind digit inputs
+    const digitEls = Array.from({length:8}, (_,i) => document.getElementById(`${widgetId}_d${i}`))
+    digitEls.forEach((inp, idx) => {
+      if (!inp) return
+      inp.addEventListener('input', (e) => {
+        const val = e.target.value.replace(/\D/g,'').slice(0,1)
+        e.target.value = val
+        e.target.classList.toggle('filled', !!val)
+        _clearErr()
+        if (val && idx < 7) digitEls[idx+1]?.focus()
+        if (digitEls.map(d=>d.value).join('').length === 8) _doVerify(email, digitEls)
+      })
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace') {
+          if (!e.target.value && idx > 0) {
+            digitEls[idx-1].value = ''
+            digitEls[idx-1].classList.remove('filled')
+            digitEls[idx-1].focus()
+          } else {
+            e.target.value = ''
+            e.target.classList.remove('filled')
+          }
+          _clearErr()
+        }
+        if (e.key === 'ArrowLeft' && idx > 0)  { e.preventDefault(); digitEls[idx-1].focus() }
+        if (e.key === 'ArrowRight' && idx < 7) { e.preventDefault(); digitEls[idx+1].focus() }
+        if (e.key === 'Enter') _doVerify(email, digitEls)
+      })
+      inp.addEventListener('paste', (e) => {
+        e.preventDefault()
+        const p = (e.clipboardData||window.clipboardData).getData('text').replace(/\D/g,'')
+        p.slice(0,8).split('').forEach((ch,i) => { if(digitEls[i]){digitEls[i].value=ch;digitEls[i].classList.add('filled')} })
+        const nxt = digitEls.findIndex(d=>!d.value)
+        digitEls[nxt===-1?7:nxt]?.focus()
+        if (digitEls.map(d=>d.value).join('').length===8) _doVerify(email, digitEls)
+      })
+    })
+
+    document.getElementById(`${widgetId}_verifyBtn`)?.addEventListener('click', () => _doVerify(email, digitEls))
+    digitEls[0]?.focus()
+
+    // Start timer
+    _startWidgetTimer()
+
+    // Expose resend function globally
+    window[`_pdkvResend_${widgetId}`] = async () => {
+      const { error } = await supabase.auth.signInWithOtp({
+        email, options: { shouldCreateUser: true, emailRedirectTo: window.location.origin }
+      })
+      if (error) { showToast('Resend failed.', 'error'); return }
+      showToast('New OTP sent! 📬', 'success', 4000)
+      digitEls.forEach(d => { d.value=''; d.classList.remove('filled','error') })
+      digitEls[0]?.focus()
+      _clearErr()
+      _startWidgetTimer()
+      const rb = document.getElementById(`${widgetId}_resendBtn`)
+      const tb = document.getElementById(`${widgetId}_timer`)
+      if (rb) rb.style.display = 'none'
+      if (tb) tb.style.display = 'inline'
+    }
+  }
+
+  function _clearErr() {
+    const el = document.getElementById(`${widgetId}_err`)
+    if (el) el.style.display = 'none'
+  }
+
+  function _showErr(msg) {
+    const el = document.getElementById(`${widgetId}_err`)
+    if (!el) return
+    el.textContent = msg
+    el.style.display = 'block'
+    const digitEls = Array.from({length:8}, (_,i) => document.getElementById(`${widgetId}_d${i}`))
+    digitEls.forEach(d => { if(d){d.classList.add('error');setTimeout(()=>d.classList.remove('error'),600)} })
+  }
+
+  async function _doVerify(email, digitEls) {
+    const otp = digitEls.map(d=>d.value).join('')
+    if (otp.length < 6) { _showErr('Please enter the complete code.'); return }
+
+    const vBtn = document.getElementById(`${widgetId}_verifyBtn`)
+    if (vBtn) { vBtn.disabled=true; vBtn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Verifying…' }
+
+    // Try full OTP first, then last 6
+    let ok = false
+    const a1 = await supabase.auth.verifyOtp({ email, token: otp, type: 'email' })
+    if (!a1.error) {
+      ok = true
+    } else {
+      const a2 = await supabase.auth.verifyOtp({ email, token: otp.slice(-6), type: 'email' })
+      if (!a2.error) ok = true
+    }
+
+    if (vBtn) { vBtn.disabled=false; vBtn.innerHTML='<i class="fas fa-shield-check"></i> Verify' }
+
+    if (!ok) {
+      _showErr('Invalid or expired code. Please try again.')
+      return
+    }
+
+    // Mark email verified
+    _verifiedEmails.set(email, true)
+    if (_timer) clearInterval(_timer)
+
+    showToast('Email verified! ✅', 'success')
+    _showVerified()
+
+    // Update auth state
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      _currentUser = user
+      if (!_userProfile) {
+        const { data } = await supabase.from('login_information').select('*').eq('id', user.id).maybeSingle()
+        _userProfile = data || { id: user.id, email: user.email }
+      }
+      updateHeaderAuthUI()
+      _notify()
+    }
+
+    if (onVerified) await onVerified(email)
+  }
+
+  function _startWidgetTimer(secs = 60) {
+    if (_timer) clearInterval(_timer)
+    _resendSecs = secs
+    const secEl  = document.getElementById(`${widgetId}_sec`)
+    const timerEl = document.getElementById(`${widgetId}_timer`)
+    const resendEl = document.getElementById(`${widgetId}_resendBtn`)
+
+    if (secEl) secEl.textContent = secs
+    if (timerEl) timerEl.style.display = 'inline'
+    if (resendEl) resendEl.style.display = 'none'
+
+    _timer = setInterval(() => {
+      _resendSecs--
+      if (secEl) secEl.textContent = _resendSecs
+      if (_resendSecs <= 0) {
+        clearInterval(_timer)
+        if (timerEl) timerEl.style.display = 'none'
+        if (resendEl) resendEl.style.display = 'inline'
+      }
+    }, 1000)
+  }
+
+  // Wire send button
+  sendBtn.addEventListener('click', _sendOtp)
+}
+
+/**
+ * Check if an email has been OTP-verified via injectOtpWidget
+ */
+export function isEmailVerified(email) {
+  return _verifiedEmails.get((email || '').trim().toLowerCase()) === true
+}
+
+/**
+ * Manually mark an email as verified (for edit mode where email unchanged)
+ */
+export function markEmailVerified(email) {
+  if (email) _verifiedEmails.set(email.trim().toLowerCase(), true)
+}
+
+/**
+ * Clear verification for an email
+ */
+export function clearEmailVerified(email) {
+  if (email) _verifiedEmails.delete(email.trim().toLowerCase())
+}
+
+/* ── LEGACY STUBS (kept for backward compat with Courses.js) ── */
 export function sendEmailOtp(email) {
-  console.warn('sendEmailOtp stub called for:', email)
+  console.warn('sendEmailOtp stub — use injectOtpWidget instead')
   return Promise.resolve()
 }
 
 export function verifyEmailOtp(email, otp) {
-  console.warn('verifyEmailOtp stub called for:', email)
-  _emailOtpState[email] = true
+  console.warn('verifyEmailOtp stub — use injectOtpWidget instead')
+  markEmailVerified(email)
   return Promise.resolve(true)
 }
 
 export function isEmailOtpVerified(email) {
-  return _emailOtpState[email] === true
+  return isEmailVerified(email)
 }
 
 export function clearOtpState(email) {
-  delete _emailOtpState[email]
+  clearEmailVerified(email)
 }
