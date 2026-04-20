@@ -1,9 +1,9 @@
-
 import { supabase } from './supabaseClient.js'
 import {
   initStickyHeader, initHamburger,
   showToast, initAuth, openAuthModal, logoutUser,
-  initRipple, initPageTransitions, initPasswordToggles
+  initRipple, initPageTransitions, initPasswordToggles,
+  injectOtpWidget, isEmailVerified, markEmailVerified
 } from './shared.js'
 
 const BUCKET   = 'image_files'
@@ -31,13 +31,6 @@ let _attSt   = {}
 let _attStus = []
 let _rtCh    = null
 let _roomsRtCh = null
-
-// OTP state
-let _pendingOtp   = null
-let _otpEmail     = null
-let _otpExpiry    = null
-let _otpVerified  = false
-let _pendingFormData = null
 
 // ── BOOT ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -96,383 +89,6 @@ function fmtDate(d) {
   catch { return d }
 }
 function sfx(n) { return { 1:'st', 2:'nd', 3:'rd', 4:'th' }[n] || 'th' }
-
-// ── OTP GENERATION ────────────────────────────────────────────
-function generateOtp() {
-  return String(Math.floor(100000 + Math.random() * 900000))
-}
-
-// Send OTP via Supabase Edge Function or store in DB for verification
-// We store OTP in a temporary table / use supabase auth email
-async function sendOtpToEmail(email, otp) {
-  // Store OTP in teacher_otp_verifications table
-  // If this table doesn't exist, we use localStorage as fallback for demo
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString() // 10 min
-
-  try {
-    // Try to upsert into a verification table
-    const { error } = await supabase.from('teacher_otp_verifications').upsert({
-      email: email.toLowerCase().trim(),
-      otp_code: otp,
-      expires_at: expiresAt,
-      verified: false
-    }, { onConflict: 'email' })
-
-    if (error) {
-      // Table might not exist — use in-memory fallback (still works within session)
-      console.warn('OTP table not found, using in-memory OTP:', error.message)
-    }
-  } catch (_) {}
-
-  // Store in memory regardless
-  _pendingOtp  = otp
-  _otpEmail    = email.toLowerCase().trim()
-  _otpExpiry   = Date.now() + 10 * 60 * 1000
-  _otpVerified = false
-
-  // Send email using Supabase auth magic link approach
-  // We'll use the Supabase auth OTP feature
-  const { error: authErr } = await supabase.auth.signInWithOtp({
-    email: email.toLowerCase().trim(),
-    options: {
-      shouldCreateUser: false,
-      data: { otp_code: otp, purpose: 'teacher_profile_verification' }
-    }
-  })
-
-  // If auth OTP fails (user doesn't exist in auth), send via custom approach
-  if (authErr) {
-    // Fallback: display OTP in a styled UI (for demo / when email service unavailable)
-    console.info('Using in-memory OTP verification. OTP:', otp)
-    return { success: true, fallback: true, otp }
-  }
-
-  return { success: true, fallback: false }
-}
-
-// ── OTP MODAL ─────────────────────────────────────────────────
-function showOtpModal(email, onVerified) {
-  // Remove existing modal if any
-  document.getElementById('otpVerifyModal')?.remove()
-
-  const isFallback = _pendingOtp !== null
-
-  const overlay = document.createElement('div')
-  overlay.id = 'otpVerifyModal'
-  overlay.style.cssText = `
-    position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(12px);
-    z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;
-    animation:fadeIn .25s ease;
-  `
-
-  overlay.innerHTML = `
-    <style>
-      @keyframes fadeIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
-      @keyframes otpShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
-      #otpVerifyModal .otp-box {
-        background: var(--tc-surface,#161f2e);
-        border:1px solid rgba(245,158,11,.28);
-        border-radius:24px;
-        max-width:420px;width:100%;
-        box-shadow:0 32px 80px rgba(0,0,0,.7),0 0 0 1px rgba(245,158,11,.1);
-        overflow:hidden;
-        animation:fadeIn .4s cubic-bezier(.34,1.56,.64,1);
-      }
-      #otpVerifyModal .otp-header {
-        background:linear-gradient(135deg,rgba(245,158,11,.15),rgba(96,165,250,.1));
-        padding:24px 28px 20px;
-        border-bottom:1px solid rgba(255,255,255,.07);
-        text-align:center;
-      }
-      #otpVerifyModal .otp-icon {
-        width:72px;height:72px;border-radius:50%;
-        background:linear-gradient(135deg,var(--tc-amber,#f59e0b),var(--tc-amber2,#d97706));
-        display:flex;align-items:center;justify-content:center;
-        font-size:1.8rem;color:#06080f;margin:0 auto 14px;
-        box-shadow:0 8px 28px rgba(245,158,11,.4);
-        animation:glowPulse 3s ease-in-out infinite;
-      }
-      @keyframes glowPulse{0%,100%{box-shadow:0 8px 28px rgba(245,158,11,.4)}50%{box-shadow:0 8px 40px rgba(245,158,11,.7),0 0 0 8px rgba(245,158,11,.08)}}
-      #otpVerifyModal .otp-title{font-family:'Syne',sans-serif;font-size:1.35rem;font-weight:800;color:#fff;margin-bottom:6px;}
-      #otpVerifyModal .otp-sub{font-size:.84rem;color:rgba(233,240,250,.55);line-height:1.65;}
-      #otpVerifyModal .otp-sub strong{color:var(--tc-amber,#f59e0b);}
-      #otpVerifyModal .otp-body{padding:28px;}
-      #otpVerifyModal .otp-inputs{
-        display:flex;gap:10px;justify-content:center;margin-bottom:20px;
-      }
-      #otpVerifyModal .otp-digit {
-        width:50px;height:58px;border-radius:12px;
-        background:rgba(255,255,255,.05);
-        border:2px solid rgba(255,255,255,.12);
-        color:#fff;font-size:1.5rem;font-weight:800;
-        text-align:center;outline:none;
-        transition:all .25s ease;
-        font-family:'JetBrains Mono',monospace;
-        caret-color:var(--tc-amber,#f59e0b);
-      }
-      #otpVerifyModal .otp-digit:focus{
-        border-color:var(--tc-amber,#f59e0b);
-        background:rgba(245,158,11,.08);
-        box-shadow:0 0 0 3px rgba(245,158,11,.15);
-        transform:translateY(-2px);
-      }
-      #otpVerifyModal .otp-digit.filled{border-color:rgba(245,158,11,.5);}
-      #otpVerifyModal .otp-digit.error{
-        border-color:var(--tc-red,#f87171)!important;
-        background:rgba(248,113,113,.08)!important;
-        animation:otpShake .4s ease;
-      }
-      #otpVerifyModal .otp-timer{
-        text-align:center;font-size:.8rem;color:rgba(233,240,250,.45);
-        margin-bottom:18px;
-      }
-      #otpVerifyModal .otp-timer span{color:var(--tc-amber,#f59e0b);font-weight:800;}
-      #otpVerifyModal .otp-msg{
-        text-align:center;padding:10px 14px;border-radius:10px;
-        font-size:.84rem;font-weight:700;margin-bottom:16px;
-        display:none;
-      }
-      #otpVerifyModal .otp-msg.err{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);color:#fca5a5;}
-      #otpVerifyModal .otp-msg.ok{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.25);color:#6ee7b7;}
-      #otpVerifyModal .otp-verify-btn{
-        width:100%;padding:14px;border-radius:50px;
-        background:linear-gradient(135deg,var(--tc-amber,#f59e0b),var(--tc-amber2,#d97706));
-        color:#06080f;font-weight:900;font-size:.96rem;border:none;cursor:pointer;
-        font-family:'Mulish',sans-serif;letter-spacing:.02em;
-        transition:all .3s cubic-bezier(.34,1.56,.64,1);
-        box-shadow:0 4px 20px rgba(245,158,11,.35);
-        margin-bottom:12px;
-      }
-      #otpVerifyModal .otp-verify-btn:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(245,158,11,.55);}
-      #otpVerifyModal .otp-verify-btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
-      #otpVerifyModal .otp-resend{
-        background:none;border:none;color:rgba(233,240,250,.45);
-        font-size:.82rem;cursor:pointer;width:100%;text-align:center;
-        padding:6px;transition:color .25s;
-        font-family:'Mulish',sans-serif;
-      }
-      #otpVerifyModal .otp-resend:hover{color:var(--tc-amber,#f59e0b);}
-      #otpVerifyModal .otp-resend:disabled{opacity:.4;cursor:not-allowed;}
-      #otpVerifyModal .otp-fallback-note{
-        background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.2);
-        border-radius:10px;padding:12px 14px;font-size:.78rem;
-        color:rgba(233,240,250,.6);line-height:1.6;margin-bottom:16px;text-align:center;
-      }
-      #otpVerifyModal .otp-fallback-note strong{color:#93c5fd;font-family:'JetBrains Mono',monospace;font-size:1.1rem;letter-spacing:.08em;}
-    </style>
-    <div class="otp-box">
-      <div class="otp-header">
-        <div class="otp-icon"><i class="fas fa-shield-check"></i></div>
-        <div class="otp-title">Verify Your Email</div>
-        <div class="otp-sub">A 6-digit OTP has been sent to<br><strong>${esc(email)}</strong></div>
-      </div>
-      <div class="otp-body">
-        ${isFallback ? `<div class="otp-fallback-note">
-          <i class="fas fa-info-circle" style="color:#93c5fd;margin-right:6px"></i>
-          Check your email for the OTP. If email delivery is unavailable in dev mode, your OTP is:<br>
-          <strong id="devOtpDisplay">------</strong>
-        </div>` : ''}
-        <div class="otp-inputs">
-          ${[0,1,2,3,4,5].map(i => `<input class="otp-digit" id="od${i}" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" />`).join('')}
-        </div>
-        <div class="otp-timer">Expires in <span id="otpTimerDisplay">10:00</span></div>
-        <div class="otp-msg" id="otpMsg"></div>
-        <button class="otp-verify-btn" id="otpVerifyBtn" onclick="verifyOtpAndSave()">
-          <i class="fas fa-check-circle"></i> Verify & Save Profile
-        </button>
-        <button class="otp-resend" id="otpResendBtn" onclick="resendOtp()">
-          <i class="fas fa-redo"></i> Resend OTP
-        </button>
-      </div>
-    </div>
-  `
-
-  document.body.appendChild(overlay)
-
-  // Show dev OTP if fallback mode
-  if (isFallback && _pendingOtp) {
-    const devEl = document.getElementById('devOtpDisplay')
-    if (devEl) devEl.textContent = _pendingOtp
-  }
-
-  // Wire up digit inputs
-  const digits = overlay.querySelectorAll('.otp-digit')
-  digits.forEach((inp, idx) => {
-    inp.addEventListener('input', (e) => {
-      const val = e.target.value.replace(/\D/g, '')
-      e.target.value = val ? val[0] : ''
-      if (val && idx < 5) digits[idx + 1].focus()
-      e.target.classList.toggle('filled', !!val)
-      e.target.classList.remove('error')
-    })
-    inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Backspace' && !e.target.value && idx > 0) digits[idx - 1].focus()
-      if (e.key === 'Enter') verifyOtpAndSave()
-    })
-    inp.addEventListener('paste', (e) => {
-      e.preventDefault()
-      const text = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6)
-      text.split('').forEach((ch, i) => {
-        if (digits[i]) { digits[i].value = ch; digits[i].classList.add('filled') }
-      })
-      const nextEmpty = [...digits].findIndex(d => !d.value)
-      if (nextEmpty >= 0) digits[nextEmpty].focus()
-      else digits[5].focus()
-    })
-  })
-
-  digits[0].focus()
-
-  // Timer countdown
-  let remaining = Math.max(0, Math.floor((_otpExpiry - Date.now()) / 1000))
-  const timerEl = document.getElementById('otpTimerDisplay')
-  const resendBtn = document.getElementById('otpResendBtn')
-
-  const tick = setInterval(() => {
-    remaining--
-    if (timerEl) {
-      const m = Math.floor(remaining / 60)
-      const s = remaining % 60
-      timerEl.textContent = `${m}:${String(s).padStart(2,'0')}`
-    }
-    if (remaining <= 0) {
-      clearInterval(tick)
-      if (timerEl) timerEl.textContent = 'Expired'
-      if (resendBtn) resendBtn.disabled = false
-    }
-  }, 1000)
-
-  overlay._timer = tick
-
-  // Store callback
-  overlay._onVerified = onVerified
-
-  // Close on backdrop click only if not in progress
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) {
-      if (confirm('Close OTP verification? Your profile will not be saved.')) {
-        clearInterval(tick)
-        overlay.remove()
-        _otpVerified = false
-      }
-    }
-  })
-}
-
-window.verifyOtpAndSave = async () => {
-  const digits = document.querySelectorAll('#otpVerifyModal .otp-digit')
-  const entered = [...digits].map(d => d.value).join('')
-
-  const msgEl  = document.getElementById('otpMsg')
-  const verBtn = document.getElementById('otpVerifyBtn')
-
-  const showOtpMsg = (txt, type) => {
-    if (!msgEl) return
-    msgEl.textContent = txt
-    msgEl.className = `otp-msg ${type}`
-    msgEl.style.display = 'block'
-  }
-
-  if (entered.length < 6) {
-    showOtpMsg('Please enter all 6 digits.', 'err')
-    digits.forEach(d => { if (!d.value) d.classList.add('error') })
-    return
-  }
-
-  // Check expiry
-  if (Date.now() > _otpExpiry) {
-    showOtpMsg('OTP has expired. Please request a new one.', 'err')
-    digits.forEach(d => d.classList.add('error'))
-    return
-  }
-
-  verBtn.disabled = true
-  verBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying…'
-
-  // Verify against in-memory OTP
-  if (entered !== _pendingOtp) {
-    // Also check DB if available
-    let dbMatch = false
-    try {
-      const { data } = await supabase
-        .from('teacher_otp_verifications')
-        .select('otp_code,expires_at,verified')
-        .eq('email', _otpEmail)
-        .maybeSingle()
-
-      if (data && data.otp_code === entered && !data.verified && new Date(data.expires_at) > new Date()) {
-        dbMatch = true
-        // Mark as verified
-        await supabase.from('teacher_otp_verifications')
-          .update({ verified: true })
-          .eq('email', _otpEmail)
-      }
-    } catch (_) {}
-
-    if (!dbMatch) {
-      showOtpMsg('Incorrect OTP. Please try again.', 'err')
-      digits.forEach(d => d.classList.add('error'))
-      verBtn.disabled = false
-      verBtn.innerHTML = '<i class="fas fa-check-circle"></i> Verify & Save Profile'
-      return
-    }
-  }
-
-  // OTP verified!
-  _otpVerified = true
-  showOtpMsg('Email verified! Saving your profile…', 'ok')
-  verBtn.innerHTML = '<i class="fas fa-check-circle"></i> Verified!'
-
-  // Get the pending form data and save
-  const modal = document.getElementById('otpVerifyModal')
-  if (modal && modal._onVerified) {
-    setTimeout(async () => {
-      const timer = modal._timer
-      if (timer) clearInterval(timer)
-      modal.remove()
-      await modal._onVerified()
-    }, 600)
-  }
-}
-
-window.resendOtp = async () => {
-  if (!_otpEmail) return
-  const resendBtn = document.getElementById('otpResendBtn')
-  if (resendBtn) { resendBtn.disabled = true; resendBtn.textContent = 'Sending…' }
-
-  _pendingOtp  = generateOtp()
-  _otpExpiry   = Date.now() + 10 * 60 * 1000
-
-  await sendOtpToEmail(_otpEmail, _pendingOtp)
-
-  // Update dev display
-  const devEl = document.getElementById('devOtpDisplay')
-  if (devEl) devEl.textContent = _pendingOtp
-
-  showToast('New OTP sent to ' + _otpEmail, 'success')
-
-  // Reset timer display
-  const timerEl = document.getElementById('otpTimerDisplay')
-  if (timerEl) timerEl.textContent = '10:00'
-  let remaining = 600
-  const tick = setInterval(() => {
-    remaining--
-    if (timerEl) {
-      const m = Math.floor(remaining / 60)
-      const s = remaining % 60
-      timerEl.textContent = `${m}:${String(s).padStart(2,'0')}`
-    }
-    if (remaining <= 0) { clearInterval(tick); if (timerEl) timerEl.textContent = 'Expired' }
-  }, 1000)
-
-  if (resendBtn) { resendBtn.disabled = false; resendBtn.innerHTML = '<i class="fas fa-redo"></i> Resend OTP' }
-
-  // Clear digit inputs
-  document.querySelectorAll('#otpVerifyModal .otp-digit').forEach(d => { d.value = ''; d.classList.remove('filled','error') })
-  document.querySelector('#otpVerifyModal .otp-digit').focus()
-  const msgEl = document.getElementById('otpMsg')
-  if (msgEl) msgEl.style.display = 'none'
-}
 
 // ── LOGIN ─────────────────────────────────────────────────────
 async function doLogin(e) {
@@ -612,11 +228,6 @@ async function renderSetup(regno, existingData) {
   const d      = existingData || {}
   const c      = document.getElementById('secSetup'); if (!c) return
 
-  // Reset OTP state for new setup
-  _otpVerified  = false
-  _pendingOtp   = null
-  _otpEmail     = null
-
   const dO  = DEPTS.map(dep  => `<option ${d.department === dep  ? 'selected' : ''}>${dep}</option>`).join('')
   const dsO = DESIGS.map(des => `<option ${d.designation === des ? 'selected' : ''}>${des}</option>`).join('')
   const gO  = ['Male','Female','Other'].map(g => `<option ${d.gender === g ? 'selected' : ''}>${g}</option>`).join('')
@@ -636,17 +247,14 @@ async function renderSetup(regno, existingData) {
             <input class="ti" value="${esc(regno)}" readonly /></div>
           <div class="tg-fg"><label class="tl"><i class="fas fa-user"></i> Full Name *</label>
             <input id="f_name" class="ti" value="${esc(d.name||'')}" placeholder="Dr. / Mr. / Ms. Full Name" required /></div>
-          <div class="tg-fg" style="position:relative;">
-            <label class="tl"><i class="fas fa-envelope"></i> Email * <span id="emailVerifBadge" style="display:none;margin-left:6px;font-size:.72rem;font-weight:800;padding:2px 8px;border-radius:50px;background:rgba(52,211,153,.12);color:#6ee7b7;border:1px solid rgba(52,211,153,.25);"><i class="fas fa-check-circle"></i> Verified</span></label>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <input id="f_email" type="email" class="ti" value="${esc(d.email||'')}" placeholder="your@email.com" required style="flex:1;" />
-              <button type="button" class="tb tb-ghost tb-sm" id="sendOtpBtn" onclick="initiateOtp()" style="white-space:nowrap;flex-shrink:0;">
-                <i class="fas fa-paper-plane"></i> Send OTP
-              </button>
-            </div>
-            <div style="font-size:.72rem;color:rgba(233,240,250,.4);margin-top:4px;">
-              <i class="fas fa-info-circle"></i> Email verification required before saving
-            </div>
+          <div class="tg-fg" id="f_email_fg">
+            <label class="tl">
+              <i class="fas fa-envelope"></i> Email *
+              <span id="tc_email_verif_badge" style="display:none;margin-left:6px;font-size:0.72rem;font-weight:800;padding:2px 9px;border-radius:50px;background:rgba(52,211,153,0.12);color:#6ee7b7;border:1px solid rgba(52,211,153,0.25);">
+                <i class="fas fa-check-circle"></i> Verified
+              </span>
+            </label>
+            <input id="f_email" type="email" class="ti" value="${esc(d.email||'')}" placeholder="your@email.com" required />
           </div>
           <div class="tg-fg"><label class="tl"><i class="fas fa-phone"></i> Phone *</label>
             <input id="f_phone" type="tel" class="ti" value="${esc(d.phone||'')}" placeholder="+91 99999 99999" required /></div>
@@ -701,29 +309,34 @@ async function renderSetup(regno, existingData) {
   bindPrev('f_img','tImgPrev','tImgPrevImg','tImgRm')
   setTimeout(initFU, 55)
 
-  // If editing and email already verified (same email), auto-mark as verified
+  // ── INJECT OTP WIDGET from shared.js ──────────────────────
+  // If editing with same email, pre-mark as verified
   if (isEdit && d.email) {
-    _otpVerified = true
-    _otpEmail    = d.email.toLowerCase().trim()
-    const badge  = document.getElementById('emailVerifBadge')
-    const btn    = document.getElementById('sendOtpBtn')
-    if (badge) badge.style.display = 'inline-flex'
-    if (btn)   { btn.textContent = '✓ Verified'; btn.style.opacity = '.5'; btn.disabled = true }
+    markEmailVerified(d.email)
   }
 
-  // Watch email input — if changed from verified email, reset verification
-  document.getElementById('f_email')?.addEventListener('input', (e) => {
-    const val = e.target.value.trim().toLowerCase()
-    if (val !== _otpEmail) {
-      _otpVerified = false
-      const badge = document.getElementById('emailVerifBadge')
-      const btn   = document.getElementById('sendOtpBtn')
-      if (badge) badge.style.display = 'none'
-      if (btn)   { btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send OTP'; btn.style.opacity = '1'; btn.disabled = false }
-    } else if (_otpVerified) {
-      const badge = document.getElementById('emailVerifBadge')
-      if (badge) badge.style.display = 'inline-flex'
+  // Inject the OTP widget onto the email field using shared.js
+  injectOtpWidget({
+    emailInputId: 'f_email',
+    widgetId:     'tc_email_otp',
+    theme:        'dark-tc',
+    onVerified:   async (email) => {
+      const badge = document.getElementById('tc_email_verif_badge')
+      if (badge) badge.style.display = 'inline'
     }
+  })
+
+  // Show verified badge if email already verified (edit mode)
+  if (isEdit && d.email) {
+    const badge = document.getElementById('tc_email_verif_badge')
+    if (badge) badge.style.display = 'inline'
+  }
+
+  // Reset badge when email changes
+  document.getElementById('f_email')?.addEventListener('input', () => {
+    const cur   = document.getElementById('f_email')?.value?.trim().toLowerCase()
+    const badge = document.getElementById('tc_email_verif_badge')
+    if (badge) badge.style.display = isEmailVerified(cur) ? 'inline' : 'none'
   })
 
   document.getElementById('setupForm').addEventListener('submit', async ev => {
@@ -738,79 +351,20 @@ async function renderSetup(regno, existingData) {
       showToast('Fill required fields (*)', 'warning'); return
     }
 
-    // Check email verification
-    if (!_otpVerified) {
-      showToast('Please verify your email first by clicking "Send OTP"', 'warning')
-      document.getElementById('f_email')?.focus()
-      // Highlight the send OTP button
-      const btn = document.getElementById('sendOtpBtn')
-      if (btn) {
-        btn.style.transform = 'scale(1.06)'
-        btn.style.boxShadow = '0 0 0 3px rgba(245,158,11,.4)'
-        setTimeout(() => { btn.style.transform = ''; btn.style.boxShadow = '' }, 800)
-      }
+    // ── EMAIL OTP VERIFICATION CHECK ──
+    if (!isEmailVerified(email)) {
+      showToast('Please verify your email with OTP before saving.', 'warning')
+      // Scroll to the OTP widget
+      const widget = document.getElementById('tc_email_otp')
+      if (widget) widget.scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
     }
 
-    // OTP verified — proceed with saving
     await doSaveProfile({ name, email, phone, gender, dept, desig, qual, g, d, isEdit })
   })
 }
 
-// Initiate OTP flow
-window.initiateOtp = async () => {
-  const emailInput = document.getElementById('f_email')
-  const email = emailInput?.value?.trim()
-
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    showToast('Please enter a valid email address first.', 'warning')
-    emailInput?.focus()
-    return
-  }
-
-  const btn = document.getElementById('sendOtpBtn')
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…' }
-
-  const otp = generateOtp()
-  const result = await sendOtpToEmail(email, otp)
-
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Resend' }
-
-  if (result.success) {
-    showToast(
-      result.fallback
-        ? `OTP generated! Check the verification popup.`
-        : `OTP sent to ${email}! Check your inbox.`,
-      'success'
-    )
-    showOtpModal(email, async () => {
-      // This callback runs after OTP verified
-      const g    = id => document.getElementById(id)?.value?.trim() || null
-      const name  = g('f_name'); const email2 = g('f_email')
-      const phone = g('f_phone'); const gender = g('f_gender')
-      const dept  = g('f_dept');  const desig  = g('f_desig'); const qual = g('f_qual')
-      const d    = _profile || {}
-      const isEdit = !!_profile
-
-      if (!name || !email2 || !phone || !gender || !dept || !desig || !qual) {
-        showToast('Please fill all required fields.', 'warning')
-        return
-      }
-
-      // Update verified badge
-      const badge = document.getElementById('emailVerifBadge')
-      if (badge) badge.style.display = 'inline-flex'
-      const sendBtn = document.getElementById('sendOtpBtn')
-      if (sendBtn) { sendBtn.innerHTML = '✓ Verified'; sendBtn.style.opacity = '.5'; sendBtn.disabled = true }
-
-      await doSaveProfile({ name, email: email2, phone, gender, dept, desig, qual, g, d, isEdit })
-    })
-  } else {
-    showToast('Failed to send OTP. Please try again.', 'error')
-  }
-}
-
-// Core save logic (separated so OTP callback can call it)
+// ── CORE SAVE PROFILE ─────────────────────────────────────────
 async function doSaveProfile({ name, email, phone, gender, dept, desig, qual, g, d, isEdit }) {
   const btn = document.getElementById('setupBtn')
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…' }
@@ -984,13 +538,13 @@ async function renderProfile(t) {
 
   setTimeout(initFU, 80)
 
-  // ── CRITICAL FIX: Always load classrooms from Supabase ──────
+  // ── ALWAYS load classrooms from Supabase before rendering ──
   await loadClassroomsAndStudents()
   renderAttMgr()
   setupRoomsRealtime()
 }
 
-// ── FIX: Dedicated function to always fetch classrooms from Supabase ──
+// ── LOAD CLASSROOMS & STUDENTS FROM SUPABASE ──────────────────
 async function loadClassroomsAndStudents() {
   const [sr, rr] = await Promise.all([
     supabase
@@ -1068,7 +622,6 @@ function clsGrid(rooms, mine) {
     <div class="tc-empty-sub">${mine ? 'Click "Create Classroom" to get started.' : 'No classrooms have been created yet.'}</div>
   </div>`
 
-  // FIX: Use a proper onclick that doesn't break due to quoting issues
   let h = rooms.map(r => {
     const safeId = r.id.replace(/'/g, "\\'")
     return `
@@ -1102,7 +655,6 @@ function refreshGrids() {
   const gm = document.getElementById('gMy');  if (gm) gm.innerHTML  = clsGrid(mine, true)
   const ga = document.getElementById('gAll'); if (ga) ga.innerHTML  = clsGrid(_rooms, false)
 
-  // Update count badges in tabs
   const tabMy  = document.getElementById('tabMy')
   const tabAll = document.getElementById('tabAll')
   if (tabMy) {
@@ -1245,7 +797,7 @@ window.openCreate = () => {
   </div>`)
 }
 
-// ── SAVE CLASSROOM — always stores in Supabase ────────────────
+// ── SAVE CLASSROOM TO SUPABASE ─────────────────────────────────
 window.saveRoom = async () => {
   const name = document.getElementById('cc_name')?.value?.trim()
   const subj = document.getElementById('cc_subj')?.value?.trim() || null
@@ -1276,7 +828,7 @@ window.saveRoom = async () => {
   if (error) { showToast('Failed to create classroom: ' + error.message, 'error'); return }
 
   showToast(`Classroom "${name}" created! 🎉`, 'success')
-  // Add to local cache immediately — realtime will also trigger
+  // Update local cache — realtime will also fire
   _rooms.unshift(data)
   closeM('mCreate')
   refreshGrids()
@@ -1284,7 +836,7 @@ window.saveRoom = async () => {
 
 // ── OPEN ROOM ─────────────────────────────────────────────────
 window.openRoom = async id => {
-  // Always re-fetch from Supabase to get latest data
+  // Always fetch fresh from Supabase
   const { data: roomData, error: roomErr } = await supabase
     .from('classrooms')
     .select('*')
@@ -1404,6 +956,7 @@ window.deleteRoom = async (id) => {
   const btn = document.querySelector('#mDeleteConfirm .tb-danger')
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting…' }
 
+  // Delete related attendance records and sessions first
   await supabase.from('attendance_records').delete().eq('classroom_id', id)
   await supabase.from('attendance_sessions').delete().eq('classroom_id', id)
   const { error } = await supabase.from('classrooms').delete().eq('id', id)
@@ -1488,6 +1041,7 @@ window.markOne = (regno, status) => {
 
 window.markAll = s => _attStus.forEach(st => markOne(st.register_no, s))
 
+// ── SAVE ATTENDANCE TO SUPABASE ───────────────────────────────
 window.saveAtt = async id => {
   const date   = document.getElementById('attDate')?.value
   const period = parseInt(document.getElementById('attPer')?.value)
@@ -1503,6 +1057,7 @@ window.saveAtt = async id => {
 
   const resetBtn = () => { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save Attendance' } }
 
+  // Upsert session record into attendance_sessions
   const { data: sess, error: sErr } = await supabase.from('attendance_sessions')
     .upsert({
       classroom_id: id, teacher_regno: _regno,
@@ -1512,6 +1067,7 @@ window.saveAtt = async id => {
 
   if (sErr) { showToast('Session error: ' + sErr.message, 'error'); resetBtn(); return }
 
+  // Build attendance records for all marked students
   const records = _attStus
     .filter(s => _attSt[s.register_no] !== null)
     .map(s => ({
