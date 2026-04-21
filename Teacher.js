@@ -56,6 +56,83 @@ document.addEventListener('DOMContentLoaded', async () => {
   initAuth()
   initPasswordToggles(document.getElementById('secLogin'))
   initFU()
+
+  // ── Global delegated click handler for ALL modal actions ──
+  document.addEventListener('click', async e => {
+
+    // Classroom card click (uses data-room-id attribute)
+    const card = e.target.closest('.tc-cls-card[data-room-id]')
+    if (card && !e.target.closest('button')) {
+      const id = card.getAttribute('data-room-id')
+      if (id) await openRoom(id)
+      return
+    }
+
+    // Mark Attendance
+    const markBtn = e.target.closest('[data-mark-att]')
+    if (markBtn) { await openMarkAtt(markBtn.getAttribute('data-mark-att')); return }
+
+    // Edit Room
+    const editBtn = e.target.closest('[data-edit-room]')
+    if (editBtn) { await openEditRoom(editBtn.getAttribute('data-edit-room')); return }
+
+    // Delete Room (confirm)
+    const delBtn = e.target.closest('[data-delete-room]')
+    if (delBtn) { await confirmDeleteRoom(delBtn.getAttribute('data-delete-room')); return }
+
+    // Delete confirm button
+    const delConfirm = e.target.closest('[data-delete-confirm]')
+    if (delConfirm) { await deleteRoom(delConfirm.getAttribute('data-delete-confirm')); return }
+
+    // View Session
+    const viewSessBtn = e.target.closest('[data-view-sess]')
+    if (viewSessBtn) { await viewSess(viewSessBtn.getAttribute('data-view-sess')); return }
+
+    // Save Attendance
+    const saveAttBtn = e.target.closest('[data-save-att]')
+    if (saveAttBtn) { await saveAtt(saveAttBtn.getAttribute('data-save-att')); return }
+
+    // Mark Present
+    const presBtn = e.target.closest('[data-mark-present]')
+    if (presBtn) { markOne(presBtn.getAttribute('data-mark-present'), 'present'); return }
+
+    // Mark Absent
+    const absBtn = e.target.closest('[data-mark-absent]')
+    if (absBtn) { markOne(absBtn.getAttribute('data-mark-absent'), 'absent'); return }
+
+    // Save Edit Room
+    const saveEditBtn = e.target.closest('[data-save-edit-room]')
+    if (saveEditBtn) { await saveEditRoom(saveEditBtn.getAttribute('data-save-edit-room')); return }
+
+    // Select-all dept button
+    const sallBtn = e.target.closest('.tc-dp-sall[data-yr]')
+    if (sallBtn) {
+      const yr   = sallBtn.getAttribute('data-yr')
+      const dEnc = sallBtn.getAttribute('data-dept')
+      const d    = decodeURIComponent(dEnc)
+      const stus = _stus.filter(s => s.department === d && String(s.year) === String(yr))
+      const allSel = stus.every(s => _selStu.has(s.register_no))
+      stus.forEach(s => allSel ? _selStu.delete(s.register_no) : _selStu.add(s.register_no))
+      const q  = document.getElementById('stuSearch')?.value || ''
+      const el = document.getElementById('stuList')
+      if (el) el.innerHTML = stuSelHTML(grpStus(_stus), q)
+      updSelCnt()
+      return
+    }
+
+    // Student row toggle
+    const stuRow = e.target.closest('.tc-sr[data-regno]')
+    if (stuRow && !e.target.closest('.tc-dp-sall')) {
+      const regno = stuRow.getAttribute('data-regno')
+      if (regno) {
+        _selStu.has(regno) ? _selStu.delete(regno) : _selStu.add(regno)
+        stuRow.classList.toggle('sel', _selStu.has(regno))
+        const chk = document.getElementById('ck-' + regno)
+        if (chk) chk.textContent = _selStu.has(regno) ? '✓' : ''
+        updSelCnt()
+      }
+    }
+  })
 })
 
 function initFU() {
@@ -171,10 +248,7 @@ function clearMsg() {
 
 window.tcLogout = () => {
   sessionStorage.removeItem(SESS_KEY)
-  _regno   = null
-  _profile = null
-  _rooms   = []
-  _stus    = []
+  _regno = null; _profile = null; _rooms = []; _stus = []
   if (_roomsRtCh) { supabase.removeChannel(_roomsRtCh); _roomsRtCh = null }
   showSec('login')
   showToast('Logged out.', 'info')
@@ -187,11 +261,7 @@ async function loadPortal(regno) {
     const { data: t, error } = await supabase
       .from('teacher_information').select('*').ilike('register_no', regno).maybeSingle()
 
-    if (error) {
-      showToast('Error loading profile: ' + error.message, 'error')
-      showSec('login')
-      return
-    }
+    if (error) { showToast('Error loading profile: ' + error.message, 'error'); showSec('login'); return }
 
     if (!t) {
       showSec('setup')
@@ -209,36 +279,37 @@ async function loadPortal(regno) {
   }
 }
 
-// ── LOAD CLASSROOMS & STUDENTS FROM SUPABASE ──────────────────
+// ── LOAD CLASSROOMS & STUDENTS ────────────────────────────────
 async function loadClassroomsAndStudents() {
   try {
     const [sr, rr] = await Promise.all([
-      supabase
-        .from('student_information')
+      supabase.from('student_information')
         .select('register_no,name,year,department')
         .order('year').order('department').order('name'),
-      supabase
-        .from('classrooms')
+      supabase.from('classrooms')
         .select('*')
         .order('created_at', { ascending: false })
     ])
-
-    if (sr.error) {
-      console.error('Students load error:', sr.error)
-    } else {
-      _stus = sr.data || []
-    }
-
-    if (rr.error) {
-      console.error('Classrooms load error:', rr.error)
-    } else {
-      _rooms = rr.data || []
-    }
+    if (sr.error) console.error('Students load error:', sr.error)
+    else _stus = sr.data || []
+    if (rr.error) console.error('Classrooms load error:', rr.error)
+    else _rooms = rr.data || []
   } catch (err) {
     console.error('loadClassroomsAndStudents error:', err)
-    _stus  = []
-    _rooms = []
+    _stus = []; _rooms = []
   }
+}
+
+// ── FETCH ONE CLASSROOM — always fresh from Supabase ─────────
+async function fetchRoom(id) {
+  if (!id) return null
+  const { data, error } = await supabase.from('classrooms').select('*').eq('id', id).maybeSingle()
+  if (error || !data) return null
+  // Keep local cache in sync
+  const idx = _rooms.findIndex(r => r.id === id)
+  if (idx >= 0) _rooms[idx] = data
+  else _rooms.unshift(data)
+  return data
 }
 
 // ── IMAGE UPLOAD ──────────────────────────────────────────────
@@ -246,34 +317,21 @@ async function uploadTeacherImg(fileInputId, regno) {
   const inp = document.getElementById(fileInputId)
   const f   = inp?.files?.[0]
   if (!f) return null
-
   const ext  = (f.name.split('.').pop() || 'jpg').toLowerCase()
   const storagePath = `${TCH_FOLD}/${regno}.${ext}`
-
-  const { error } = await supabase.storage
-    .from(BUCKET)
-    .upload(storagePath, f, { upsert: true, contentType: f.type })
-
-  if (error) {
-    showToast('Photo upload failed: ' + error.message, 'error')
-    return null
-  }
-
+  const { error } = await supabase.storage.from(BUCKET).upload(storagePath, f, { upsert: true, contentType: f.type })
+  if (error) { showToast('Photo upload failed: ' + error.message, 'error'); return null }
   const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(storagePath)
   return publicUrl + '?t=' + Date.now()
 }
 
 async function findTeacherPhotoInBucket(regno) {
   try {
-    const { data: files, error } = await supabase.storage
-      .from(BUCKET)
-      .list(TCH_FOLD, { search: regno })
+    const { data: files, error } = await supabase.storage.from(BUCKET).list(TCH_FOLD, { search: regno })
     if (!error && files && files.length > 0) {
       const match = files.find(f2 => f2.name && f2.name.startsWith(regno + '.'))
       if (match) {
-        const { data: { publicUrl } } = supabase.storage
-          .from(BUCKET)
-          .getPublicUrl(`${TCH_FOLD}/${match.name}`)
+        const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(`${TCH_FOLD}/${match.name}`)
         return publicUrl + '?t=' + Date.now()
       }
     }
@@ -283,8 +341,7 @@ async function findTeacherPhotoInBucket(regno) {
 
 function bindPrev(fId, wId, iId, rmId) {
   document.getElementById(fId)?.addEventListener('change', () => {
-    const f = document.getElementById(fId)?.files?.[0]
-    if (!f) return
+    const f = document.getElementById(fId)?.files?.[0]; if (!f) return
     const r = new FileReader()
     r.onload = ev => {
       const img  = document.getElementById(iId)
@@ -307,15 +364,12 @@ function bindPrev(fId, wId, iId, rmId) {
 // ── SETUP FORM ────────────────────────────────────────────────
 async function renderSetup(regno, existingData) {
   if (existingData === undefined) {
-    const { data } = await supabase.from('teacher_information')
-      .select('*').ilike('register_no', regno).maybeSingle()
+    const { data } = await supabase.from('teacher_information').select('*').ilike('register_no', regno).maybeSingle()
     existingData = data || null
   }
-
   const isEdit = !!existingData
   const d      = existingData || {}
-  const c      = document.getElementById('secSetup')
-  if (!c) return
+  const c      = document.getElementById('secSetup'); if (!c) return
 
   const dO  = DEPTS.map(dep  => `<option ${d.department  === dep  ? 'selected' : ''}>${esc(dep)}</option>`).join('')
   const dsO = DESIGS.map(des => `<option ${d.designation === des  ? 'selected' : ''}>${esc(des)}</option>`).join('')
@@ -398,12 +452,8 @@ async function renderSetup(regno, existingData) {
   bindPrev('f_img','tImgPrev','tImgPrevImg','tImgRm')
   setTimeout(initFU, 55)
 
-  // Pre-mark email as verified if editing with same email
-  if (isEdit && d.email) {
-    markEmailVerified(d.email)
-  }
+  if (isEdit && d.email) markEmailVerified(d.email)
 
-  // Inject OTP widget
   injectOtpWidget({
     emailInputId: 'f_email',
     widgetId:     'tc_email_otp',
@@ -414,13 +464,11 @@ async function renderSetup(regno, existingData) {
     }
   })
 
-  // Show verified badge if editing
   if (isEdit && d.email) {
     const badge = document.getElementById('tc_email_verif_badge')
     if (badge) badge.style.display = 'inline'
   }
 
-  // Reset badge on email change
   document.getElementById('f_email')?.addEventListener('input', () => {
     const cur   = document.getElementById('f_email')?.value?.trim().toLowerCase()
     const badge = document.getElementById('tc_email_verif_badge')
@@ -429,28 +477,18 @@ async function renderSetup(regno, existingData) {
 
   document.getElementById('setupForm').addEventListener('submit', async ev => {
     ev.preventDefault()
-
-    const g    = id => document.getElementById(id)?.value?.trim() || null
-    const name  = g('f_name')
-    const email = g('f_email')
-    const phone = g('f_phone')
-    const gender = g('f_gender')
-    const dept  = g('f_dept')
-    const desig = g('f_desig')
-    const qual  = g('f_qual')
+    const g      = id => document.getElementById(id)?.value?.trim() || null
+    const name   = g('f_name'), email = g('f_email'), phone = g('f_phone')
+    const gender = g('f_gender'), dept = g('f_dept'), desig = g('f_desig'), qual = g('f_qual')
 
     if (!name || !email || !phone || !gender || !dept || !desig || !qual) {
-      showToast('Fill all required (*) fields', 'warning')
-      return
+      showToast('Fill all required (*) fields', 'warning'); return
     }
-
     if (!isEmailVerified(email)) {
       showToast('Please verify your email with OTP before saving.', 'warning')
-      const widget = document.getElementById('tc_email_otp')
-      if (widget) widget.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      document.getElementById('tc_email_otp')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
     }
-
     await doSaveProfile({ name, email, phone, gender, dept, desig, qual, g, d, isEdit })
   })
 }
@@ -461,8 +499,7 @@ async function doSaveProfile({ name, email, phone, gender, dept, desig, qual, g,
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…' }
 
   let imgUrl = d.image_url || null
-  const fileInput = document.getElementById('f_img')
-  if (fileInput?.files?.[0]) {
+  if (document.getElementById('f_img')?.files?.[0]) {
     if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading photo…'
     const newUrl = await uploadTeacherImg('f_img', _regno)
     if (newUrl) { imgUrl = newUrl; showToast('Photo uploaded!', 'success') }
@@ -471,36 +508,22 @@ async function doSaveProfile({ name, email, phone, gender, dept, desig, qual, g,
   if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving profile…'
 
   const payload = {
-    register_no:    _regno,
-    name, email, phone, gender,
-    department:     dept,
-    designation:    desig,
-    qualification:  qual,
-    experience:     g('f_exp')      || null,
-    specialization: g('f_spec')     || null,
-    employee_id:    g('f_empid')    || null,
-    subjects:       g('f_subjects') || null,
-    joining_date:   g('f_joining')  || null,
-    address:        g('f_addr')     || null,
-    image_url:      imgUrl,
-    updated_at:     new Date().toISOString()
+    register_no: _regno, name, email, phone, gender,
+    department: dept, designation: desig, qualification: qual,
+    experience: g('f_exp') || null, specialization: g('f_spec') || null,
+    employee_id: g('f_empid') || null, subjects: g('f_subjects') || null,
+    joining_date: g('f_joining') || null, address: g('f_addr') || null,
+    image_url: imgUrl, updated_at: new Date().toISOString()
   }
 
-  const { error } = await supabase.from('teacher_information')
-    .upsert(payload, { onConflict: 'register_no' })
+  const { error } = await supabase.from('teacher_information').upsert(payload, { onConflict: 'register_no' })
 
-  if (btn) {
-    btn.disabled = false
-    btn.innerHTML = `<i class="fas fa-save"></i> ${isEdit ? 'Update My Profile' : 'Save My Profile'}`
-  }
-
+  if (btn) { btn.disabled = false; btn.innerHTML = `<i class="fas fa-save"></i> ${isEdit ? 'Update My Profile' : 'Save My Profile'}` }
   if (error) { showToast('Save failed: ' + error.message, 'error'); return }
 
   showToast(isEdit ? 'Profile updated! ✅' : 'Profile saved! 🎉', 'success')
 
-  const { data: t } = await supabase.from('teacher_information')
-    .select('*').ilike('register_no', _regno).maybeSingle()
-
+  const { data: t } = await supabase.from('teacher_information').select('*').ilike('register_no', _regno).maybeSingle()
   if (t) {
     if (imgUrl) t.image_url = imgUrl
     _profile = t
@@ -513,24 +536,14 @@ async function doSaveProfile({ name, email, phone, gender, dept, desig, qual, g,
 }
 
 // ── EDIT / CANCEL ─────────────────────────────────────────────
-window.tcEdit = async () => {
-  if (!_regno) return
-  showSec('setup')
-  await renderSetup(_regno, _profile || null)
-}
+window.tcEdit = async () => { if (!_regno) return; showSec('setup'); await renderSetup(_regno, _profile || null) }
+window.tcCancelEdit = () => { if (!_profile) return; showSec('profile') }
 
-window.tcCancelEdit = () => {
-  if (!_profile) return
-  showSec('profile')
-}
-
-// ── RENDER PROFILE ─────────────────────────────────────────────
+// ── RENDER PROFILE ────────────────────────────────────────────
 async function renderProfile(t) {
-  const c = document.getElementById('secProfile')
-  if (!c) return
+  const c = document.getElementById('secProfile'); if (!c) return
 
   const fallbackPhoto = `https://ui-avatars.com/api/?name=${encodeURIComponent(t.name || t.register_no)}&background=f59e0b&color=060912&size=300&bold=true`
-
   let photo = fallbackPhoto
   if (t.image_url && t.image_url.startsWith('http')) {
     photo = t.image_url.split('?')[0] + '?t=' + Date.now()
@@ -538,10 +551,7 @@ async function renderProfile(t) {
     const found = await findTeacherPhotoInBucket(t.register_no)
     if (found) {
       photo = found
-      supabase.from('teacher_information')
-        .update({ image_url: found })
-        .ilike('register_no', t.register_no)
-        .then(() => {})
+      supabase.from('teacher_information').update({ image_url: found }).ilike('register_no', t.register_no).then(() => {})
     }
   }
 
@@ -553,13 +563,8 @@ async function renderProfile(t) {
       <div class="tc-photo-center-wrap">
         <div class="tc-photo-ring-outer">
           <div class="tc-photo-ring-inner">
-            <img
-              id="tcProfilePhoto"
-              src="${photo}"
-              alt="${esc(t.name || t.register_no)}"
-              class="tc-photo-big"
-              onerror="this.onerror=null;this.src='${fallbackPhoto}'"
-            />
+            <img id="tcProfilePhoto" src="${photo}" alt="${esc(t.name || t.register_no)}" class="tc-photo-big"
+              onerror="this.onerror=null;this.src='${fallbackPhoto}'" />
           </div>
           <div class="tc-photo-ring-glow"></div>
         </div>
@@ -580,7 +585,6 @@ async function renderProfile(t) {
         <button class="tb tb-danger" onclick="tcLogout()"><i class="fas fa-sign-out-alt"></i> Sign Out</button>
       </div>
     </div>
-
     <div class="tc-info-grid tu">
       ${tci('fas fa-envelope','tci-amb','Email',t.email)}
       ${tci('fas fa-phone','tci-tel','Phone',t.phone)}
@@ -591,16 +595,13 @@ async function renderProfile(t) {
       ${tci('fas fa-briefcase','tci-blu','Experience',t.experience)}
       ${tci('fas fa-map-marker-alt','tci-red','Address',t.address)}
     </div>
-
     ${subjs.length ? `
     <div class="tg tc-subj-wrap tu">
       <div class="tc-subj-h"><i class="fas fa-book-open"></i> Subjects Handling</div>
       <div class="tc-subj-chips">${subjs.map((s,i) => `<span class="tc-schip" style="animation-delay:${i*.06}s"><i class="fas fa-book"></i> ${esc(s)}</span>`).join('')}</div>
     </div>` : ''}
-
     <div id="attMgr" class="tu"></div>
   </div>
-
   <style>
     .tc-photo-center-wrap{position:relative;width:180px;height:180px;margin:0 auto 22px;}
     .tc-photo-ring-outer{width:180px;height:180px;border-radius:50%;padding:4px;
@@ -608,8 +609,7 @@ async function renderProfile(t) {
       animation:tcRingRotate 8s linear infinite;position:relative;}
     @keyframes tcRingRotate{to{transform:rotate(360deg);}}
     .tc-photo-ring-inner{width:100%;height:100%;border-radius:50%;overflow:hidden;background:var(--tc-void);padding:3px;}
-    .tc-photo-big{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block;
-      transition:transform .5s cubic-bezier(.34,1.56,.64,1);}
+    .tc-photo-big{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block;transition:transform .5s cubic-bezier(.34,1.56,.64,1);}
     .tc-photo-big:hover{transform:scale(1.08);}
     .tc-photo-ring-glow{position:absolute;inset:-8px;border-radius:50%;
       background:conic-gradient(from 0deg,rgba(245,158,11,.4),rgba(96,165,250,.4),rgba(45,212,191,.4),rgba(245,158,11,.4));
@@ -621,8 +621,7 @@ async function renderProfile(t) {
     @keyframes statusPulse{0%,100%{box-shadow:0 0 8px rgba(52,211,153,.6);}50%{box-shadow:0 0 18px rgba(52,211,153,.9);}}
     .tc-prof-card-new{padding:clamp(28px,5vw,48px) 32px;text-align:center;}
     .tc-prof-text-center{margin-bottom:22px;}
-    .tc-prof-name-big{font-family:'Syne',sans-serif;font-size:clamp(1.6rem,3vw,2.4rem);
-      font-weight:800;color:#fff;margin-bottom:6px;
+    .tc-prof-name-big{font-family:'Syne',sans-serif;font-size:clamp(1.6rem,3vw,2.4rem);font-weight:800;color:#fff;margin-bottom:6px;
       background:linear-gradient(90deg,#fff 0%,var(--tc-amber) 50%,var(--tc-teal) 100%);
       -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
       background-size:200% auto;animation:tcChroma 5s linear infinite;}
@@ -633,8 +632,6 @@ async function renderProfile(t) {
   </style>`
 
   setTimeout(initFU, 80)
-
-  // Now render the attendance manager
   renderAttMgr()
 }
 
@@ -648,32 +645,20 @@ function tci(ico, cls, lbl, val) {
 // ── ROOMS REALTIME ────────────────────────────────────────────
 function setupRoomsRealtime() {
   if (_roomsRtCh) { supabase.removeChannel(_roomsRtCh); _roomsRtCh = null }
-
   _roomsRtCh = supabase.channel('tc-rooms-live-' + _regno + '-' + Date.now())
-    .on('postgres_changes', {
-      event: '*', schema: 'public', table: 'classrooms'
-    }, async () => {
-      const { data, error } = await supabase
-        .from('classrooms')
-        .select('*')
-        .order('created_at', { ascending: false })
-      if (!error) {
-        _rooms = data || []
-        refreshGrids()
-      }
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'classrooms' }, async () => {
+      const { data, error } = await supabase.from('classrooms').select('*').order('created_at', { ascending: false })
+      if (!error) { _rooms = data || []; refreshGrids() }
     })
     .subscribe()
 }
 
 // ── ATTENDANCE MANAGER ────────────────────────────────────────
 function renderAttMgr() {
-  const c = document.getElementById('attMgr')
-  if (!c) return
-
+  const c = document.getElementById('attMgr'); if (!c) return
   const mine = _rooms.filter(r =>
     (r.teacher_regno || '').toUpperCase().trim() === (_regno || '').toUpperCase().trim()
   )
-
   c.innerHTML = `
   <div style="margin-top:30px">
     <div class="tc-att-hdr"><i class="fas fa-calendar-check"></i> Attendance Manager</div>
@@ -699,6 +684,7 @@ function renderAttMgr() {
   </div>`
 }
 
+// Use data-room-id on cards — no ID in onclick strings at all
 function clsGrid(rooms, mine) {
   if (!rooms.length) {
     return `<div class="tc-empty" style="grid-column:1/-1">
@@ -707,11 +693,8 @@ function clsGrid(rooms, mine) {
       <div class="tc-empty-sub">${mine ? 'Click "Create Classroom" to get started.' : 'No classrooms have been created yet.'}</div>
     </div>`
   }
-
-  let h = rooms.map(r => {
-    const safeId = safeAttr(r.id)
-    return `
-    <div class="tg tc-cls-card" onclick="openRoom('${safeId}')" style="cursor:pointer;">
+  let h = rooms.map(r => `
+    <div class="tg tc-cls-card" data-room-id="${esc(r.id)}" style="cursor:pointer;">
       <div class="tc-cls-ico"><i class="fas fa-door-open"></i></div>
       <div class="tc-cls-name">${esc(r.class_name)}</div>
       <div class="tc-cls-meta">
@@ -720,79 +703,48 @@ function clsGrid(rooms, mine) {
         ${r.subject ? `<div><i class="fas fa-book"></i> ${esc(r.subject)}</div>` : ''}
       </div>
       <span class="tc-cls-cnt"><i class="fas fa-users"></i> ${(r.student_regnos || []).length} Students</span>
-    </div>`
-  }).join('')
-
+    </div>`).join('')
   if (mine) h += `<button class="tc-create-btn" onclick="openCreate()"><i class="fas fa-plus-circle"></i><span>Create New Classroom</span></button>`
   return h
 }
 
-// ── TAB SWITCH ────────────────────────────────────────────────
 window.tcTab = (t, btn) => {
   document.querySelectorAll('.tc-tab').forEach(b => b.classList.remove('on'))
   btn.classList.add('on')
-  const panMy  = document.getElementById('panMy')
-  const panAll = document.getElementById('panAll')
-  if (panMy)  panMy.classList.toggle('on',  t === 'my')
-  if (panAll) panAll.classList.toggle('on', t === 'all')
+  document.getElementById('panMy')?.classList.toggle('on',  t === 'my')
+  document.getElementById('panAll')?.classList.toggle('on', t === 'all')
 }
 
 function refreshGrids() {
   const mine = _rooms.filter(r =>
     (r.teacher_regno || '').toUpperCase().trim() === (_regno || '').toUpperCase().trim()
   )
-
-  const gm = document.getElementById('gMy')
-  const ga = document.getElementById('gAll')
-  if (gm) gm.innerHTML = clsGrid(mine, true)
-  if (ga) ga.innerHTML = clsGrid(_rooms, false)
-
-  const badgeMine = document.getElementById('badgeMine')
-  const badgeAll  = document.getElementById('badgeAll')
-  if (badgeMine) badgeMine.textContent = mine.length
-  if (badgeAll)  badgeAll.textContent  = _rooms.length
+  const gm = document.getElementById('gMy');  if (gm) gm.innerHTML = clsGrid(mine, true)
+  const ga = document.getElementById('gAll'); if (ga) ga.innerHTML = clsGrid(_rooms, false)
+  const bm = document.getElementById('badgeMine'); if (bm) bm.textContent = mine.length
+  const ba = document.getElementById('badgeAll');  if (ba) ba.textContent = _rooms.length
 }
 
 // ── MODAL SYSTEM ──────────────────────────────────────────────
-// We keep modals in a persistent container — never clear until user dismisses
 function getModalContainer() {
-  let container = document.getElementById('tcModals')
-  if (!container) {
-    container = document.createElement('div')
-    container.id = 'tcModals'
-    document.body.appendChild(container)
-  }
-  return container
+  let c = document.getElementById('tcModals')
+  if (!c) { c = document.createElement('div'); c.id = 'tcModals'; document.body.appendChild(c) }
+  return c
 }
 
-function modal(h) {
-  getModalContainer().innerHTML = h
-}
+function modal(h) { getModalContainer().innerHTML = h }
 
 window.closeM = id => {
-  const e = document.getElementById(id)
-  if (e) {
-    e.classList.remove('open')
-    // Delay cleanup so CSS transitions can play
-    setTimeout(() => {
-      const container = document.getElementById('tcModals')
-      if (container) container.innerHTML = ''
-    }, 350)
-  }
-}
-
-// ── SAFE ATTRIBUTE ENCODING ───────────────────────────────────
-function safeAttr(str) {
-  // Encode for use inside single-quoted onclick attributes
-  return String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+  const e = document.getElementById(id); if (!e) return
+  e.classList.remove('open')
+  setTimeout(() => { const c = document.getElementById('tcModals'); if (c) c.innerHTML = '' }, 350)
 }
 
 // ── STUDENT GROUPING ──────────────────────────────────────────
 function grpStus(stus) {
   const g = {}
   stus.forEach(s => {
-    const y = s.year || '?'
-    const d = s.department || 'Unknown'
+    const y = s.year || '?', d = s.department || 'Unknown'
     if (!g[y]) g[y] = {}
     if (!g[y][d]) g[y][d] = []
     g[y][d].push(s)
@@ -802,9 +754,7 @@ function grpStus(stus) {
 
 function stuSelHTML(groups, filter = '') {
   const yrs = Object.keys(groups).map(Number).sort((a, b) => a - b)
-  if (!yrs.length) {
-    return `<div style="text-align:center;padding:20px;color:var(--tmut)">No students in system yet.</div>`
-  }
+  if (!yrs.length) return `<div style="text-align:center;padding:20px;color:var(--tmut)">No students in system yet.</div>`
   let html = ''
   yrs.forEach(yr => {
     const depts = Object.keys(groups[yr]).sort()
@@ -813,67 +763,39 @@ function stuSelHTML(groups, filter = '') {
       let stus = groups[yr][d]
       if (filter) {
         const q = filter.toLowerCase()
-        stus = stus.filter(s =>
-          (s.name || '').toLowerCase().includes(q) ||
-          (s.register_no || '').toLowerCase().includes(q)
-        )
+        stus = stus.filter(s => (s.name || '').toLowerCase().includes(q) || (s.register_no || '').toLowerCase().includes(q))
       }
       if (!stus.length) return
-      const safeD    = encodeURIComponent(d)
-      const allSel   = stus.every(s => _selStu.has(s.register_no))
+      const allSel = stus.every(s => _selStu.has(s.register_no))
       deptHtml += `<div class="tc-dp-blk">
         <div class="tc-dp-title">
           <span><i class="fas fa-building"></i> ${esc(d)}</span>
-          <button type="button" class="tc-dp-sall" onclick="selDept(${yr},'${safeD}')">
+          <button type="button" class="tc-dp-sall" data-yr="${yr}" data-dept="${encodeURIComponent(d)}">
             ${allSel ? 'Deselect All' : 'Select All'}
           </button>
         </div>
         ${stus.map(s => `
-          <div class="tc-sr${_selStu.has(s.register_no) ? ' sel' : ''}" id="r-${s.register_no}" onclick="selS('${safeAttr(s.register_no)}')">
+          <div class="tc-sr${_selStu.has(s.register_no) ? ' sel' : ''}" data-regno="${esc(s.register_no)}">
             <div>
               <div class="tc-sr-name">${esc(s.name || '—')}</div>
               <div class="tc-sr-meta">${esc(s.register_no)} · ${esc(d)}</div>
             </div>
-            <div class="tc-sr-chk" id="ck-${s.register_no}">${_selStu.has(s.register_no) ? '✓' : ''}</div>
+            <div class="tc-sr-chk" id="ck-${esc(s.register_no)}">${_selStu.has(s.register_no) ? '✓' : ''}</div>
           </div>`).join('')}
       </div>`
     })
     if (!deptHtml.trim()) return
-    html += `<div class="tc-yr-blk">
-      <div class="tc-yr-title"><i class="fas fa-layer-group"></i> Year ${yr}${sfx(yr)}</div>
-      ${deptHtml}
-    </div>`
+    html += `<div class="tc-yr-blk"><div class="tc-yr-title"><i class="fas fa-layer-group"></i> Year ${yr}${sfx(yr)}</div>${deptHtml}</div>`
   })
   return html || `<div style="text-align:center;padding:20px;color:var(--tmut)">No matching students.</div>`
 }
 
 function updSelCnt() {
-  const e = document.getElementById('selCnt')
-  if (e) e.textContent = `${_selStu.size} Selected`
-}
-
-window.selS = regno => {
-  _selStu.has(regno) ? _selStu.delete(regno) : _selStu.add(regno)
-  const row = document.getElementById('r-' + regno)
-  const chk = document.getElementById('ck-' + regno)
-  if (row) row.classList.toggle('sel', _selStu.has(regno))
-  if (chk) chk.textContent = _selStu.has(regno) ? '✓' : ''
-  updSelCnt()
-}
-
-window.selDept = (yr, dEnc) => {
-  const d      = decodeURIComponent(dEnc)
-  const stus   = _stus.filter(s => s.department === d && String(s.year) === String(yr))
-  const allSel = stus.every(s => _selStu.has(s.register_no))
-  stus.forEach(s => allSel ? _selStu.delete(s.register_no) : _selStu.add(s.register_no))
-  const q  = document.getElementById('stuSearch')?.value || ''
-  const el = document.getElementById('stuList')
-  if (el) el.innerHTML = stuSelHTML(grpStus(_stus), q)
-  updSelCnt()
+  const e = document.getElementById('selCnt'); if (e) e.textContent = `${_selStu.size} Selected`
 }
 
 window.fltStus = () => {
-  const q  = document.getElementById('stuSearch')?.value || ''
+  const q = document.getElementById('stuSearch')?.value || ''
   const el = document.getElementById('stuList')
   if (el) el.innerHTML = stuSelHTML(grpStus(_stus), q)
 }
@@ -917,7 +839,7 @@ window.openCreate = () => {
   </div>`)
 }
 
-// ── SAVE CLASSROOM ─────────────────────────────────────────────
+// ── SAVE CLASSROOM ────────────────────────────────────────────
 window.saveRoom = async () => {
   const name = document.getElementById('cc_name')?.value?.trim()
   const subj = document.getElementById('cc_subj')?.value?.trim() || null
@@ -927,7 +849,7 @@ window.saveRoom = async () => {
   const saveBtn = document.getElementById('saveRoomBtn')
   if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating…' }
 
-  const payload = {
+  const { data, error } = await supabase.from('classrooms').insert({
     teacher_regno:  _regno,
     teacher_name:   _profile?.name || _regno,
     class_name:     name,
@@ -935,16 +857,9 @@ window.saveRoom = async () => {
     department:     document.getElementById('cc_dept')?.value?.trim() || null,
     year:           parseInt(document.getElementById('cc_year')?.value) || null,
     student_regnos: [..._selStu]
-  }
-
-  const { data, error } = await supabase
-    .from('classrooms')
-    .insert(payload)
-    .select()
-    .single()
+  }).select().single()
 
   if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="fas fa-save"></i> Create Classroom' }
-
   if (error) { showToast('Failed to create classroom: ' + error.message, 'error'); return }
 
   showToast(`Classroom "${name}" created! 🎉`, 'success')
@@ -953,61 +868,35 @@ window.saveRoom = async () => {
   refreshGrids()
 }
 
-// ── OPEN ROOM ─────────────────────────────────────────────────
+// ── OPEN ROOM — always fetches fresh ─────────────────────────
 window.openRoom = async id => {
-  // Fetch fresh from Supabase
-  const { data: roomData, error: roomErr } = await supabase
-    .from('classrooms')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle()
+  if (!id) { showToast('Invalid classroom ID.', 'error'); return }
+  const room = await fetchRoom(id)
+  if (!room) { showToast('Classroom not found or deleted.', 'error'); return }
 
-  if (roomErr || !roomData) {
-    showToast('Could not load classroom data.', 'error')
-    return
-  }
-
-  // Update local cache
-  const idx = _rooms.findIndex(r => r.id === id)
-  if (idx >= 0) _rooms[idx] = roomData
-  else _rooms.unshift(roomData)
-
-  const room = roomData
   const stus = _stus.filter(s => (room.student_regnos || []).includes(s.register_no))
 
-  // Load recent sessions (last 30 days for better visibility)
-  const cutoffDate = new Date()
-  cutoffDate.setDate(cutoffDate.getDate() - 30)
-  const cutoffISO = cutoffDate.toISOString().split('T')[0]
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30)
+  const cutoffISO = cutoff.toISOString().split('T')[0]
 
-  const { data: sessions, error: sessErr } = await supabase
-    .from('attendance_sessions')
-    .select('*')
-    .eq('classroom_id', id)
-    .gte('session_date', cutoffISO)
-    .order('session_date', { ascending: false })
-    .order('period', { ascending: true })
-    .limit(30)
-
-  if (sessErr) console.error('Sessions load error:', sessErr)
+  const { data: sessions } = await supabase.from('attendance_sessions').select('*')
+    .eq('classroom_id', id).gte('session_date', cutoffISO)
+    .order('session_date', { ascending: false }).order('period', { ascending: true }).limit(30)
 
   const sessionList = sessions || []
 
+  // Use data-view-sess attribute — no ID in onclick strings
   const sessRows = sessionList.length
-    ? sessionList.map(s => {
-        const sid = safeAttr(s.id)
-        return `<tr>
-          <td>${fmtDate(s.session_date)}</td>
-          <td>Period ${s.period}</td>
-          <td>${esc(s.subject_name || '—')}</td>
-          <td><span class="tbd tb-teal"><i class="fas fa-users"></i> ${(room.student_regnos || []).length}</span></td>
-          <td><button class="tb tb-ghost tb-sm" onclick="viewSess('${sid}')"><i class="fas fa-eye"></i> View</button></td>
-        </tr>`
-      }).join('')
+    ? sessionList.map(s => `<tr>
+        <td>${fmtDate(s.session_date)}</td>
+        <td>Period ${s.period}</td>
+        <td>${esc(s.subject_name || '—')}</td>
+        <td><span class="tbd tb-teal"><i class="fas fa-users"></i> ${(room.student_regnos || []).length}</span></td>
+        <td><button class="tb tb-ghost tb-sm" data-view-sess="${esc(s.id)}"><i class="fas fa-eye"></i> View</button></td>
+      </tr>`).join('')
     : `<tr><td colspan="5" style="text-align:center;color:var(--tmut);padding:20px">No sessions in the last 30 days.</td></tr>`
 
-  const roomId = safeAttr(room.id)
-
+  // Use data attributes for all action buttons — zero string-escaping risk
   modal(`
   <div class="tc-mo open" id="mRoom">
     <div class="tc-mb tc-mb-lg">
@@ -1026,12 +915,11 @@ window.openRoom = async id => {
             </div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="tb tb-green tb-sm" onclick="openMarkAtt('${roomId}')"><i class="fas fa-clipboard-check"></i> Mark Attendance</button>
-            <button class="tb tb-ghost tb-sm" onclick="openEditRoom('${roomId}')"><i class="fas fa-edit"></i> Edit</button>
-            <button class="tb tb-danger tb-sm" onclick="confirmDeleteRoom('${roomId}')"><i class="fas fa-trash"></i> Delete</button>
+            <button class="tb tb-green tb-sm" data-mark-att="${esc(room.id)}"><i class="fas fa-clipboard-check"></i> Mark Attendance</button>
+            <button class="tb tb-ghost tb-sm" data-edit-room="${esc(room.id)}"><i class="fas fa-edit"></i> Edit</button>
+            <button class="tb tb-danger tb-sm" data-delete-room="${esc(room.id)}"><i class="fas fa-trash"></i> Delete</button>
           </div>
         </div>
-
         <div style="margin-bottom:20px">
           <div style="font-size:.9rem;color:#fff;font-weight:700;margin-bottom:11px">
             <i class="fas fa-history" style="color:var(--tamb)"></i> Attendance Sessions (Last 30 Days)
@@ -1042,7 +930,6 @@ window.openRoom = async id => {
             <tbody>${sessRows}</tbody>
           </table></div>
         </div>
-
         <div>
           <div style="font-size:.9rem;color:#fff;font-weight:700;margin-bottom:10px">
             <i class="fas fa-users" style="color:var(--tamb)"></i> Students (${stus.length})
@@ -1050,8 +937,7 @@ window.openRoom = async id => {
           <div style="display:flex;flex-wrap:wrap;gap:7px">
             ${stus.length
               ? stus.map(s => `<span class="tbd tb-teal"><i class="fas fa-user"></i> ${esc(s.name || s.register_no)}</span>`).join('')
-              : '<span style="color:var(--tmut);font-size:.84rem">No student profiles found for this classroom.</span>'
-            }
+              : '<span style="color:var(--tmut);font-size:.84rem">No student profiles found for this classroom.</span>'}
           </div>
         </div>
       </div>
@@ -1059,11 +945,11 @@ window.openRoom = async id => {
   </div>`)
 }
 
-// ── DELETE CLASSROOM ──────────────────────────────────────────
-window.confirmDeleteRoom = (id) => {
-  const room = _rooms.find(r => r.id === id)
+// ── CONFIRM DELETE ────────────────────────────────────────────
+window.confirmDeleteRoom = async id => {
+  if (!id) return
+  const room = await fetchRoom(id)
   if (!room) { showToast('Classroom not found.', 'error'); return }
-  const roomId = safeAttr(id)
   modal(`
   <div class="tc-mo open" id="mDeleteConfirm">
     <div class="tc-mb tc-mb-sm">
@@ -1080,7 +966,9 @@ window.confirmDeleteRoom = (id) => {
           </div>
           <div style="display:flex;gap:10px;justify-content:center;">
             <button class="tb tb-ghost" onclick="closeM('mDeleteConfirm')">Cancel</button>
-            <button class="tb tb-danger" id="deleteRoomBtn" onclick="deleteRoom('${roomId}')"><i class="fas fa-trash"></i> Delete Permanently</button>
+            <button class="tb tb-danger" id="deleteRoomBtn" data-delete-confirm="${esc(room.id)}">
+              <i class="fas fa-trash"></i> Delete Permanently
+            </button>
           </div>
         </div>
       </div>
@@ -1088,60 +976,50 @@ window.confirmDeleteRoom = (id) => {
   </div>`)
 }
 
-window.deleteRoom = async (id) => {
+window.deleteRoom = async id => {
+  if (!id) return
   const btn = document.getElementById('deleteRoomBtn')
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting…' }
-
-  // Delete related records first, then sessions, then classroom
   await supabase.from('attendance_records').delete().eq('classroom_id', id)
   await supabase.from('attendance_sessions').delete().eq('classroom_id', id)
   const { error } = await supabase.from('classrooms').delete().eq('id', id)
-
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash"></i> Delete Permanently' }
   if (error) { showToast('Failed to delete: ' + error.message, 'error'); return }
-
   showToast('Classroom deleted.', 'info')
   _rooms = _rooms.filter(r => r.id !== id)
   closeM('mDeleteConfirm')
   refreshGrids()
 }
 
-// ── MARK ATTENDANCE ───────────────────────────────────────────
-window.openMarkAtt = id => {
-  const room = _rooms.find(r => r.id === id)
+// ── MARK ATTENDANCE — always fetches fresh ────────────────────
+window.openMarkAtt = async id => {
+  if (!id) return
+  const room = await fetchRoom(id)
   if (!room) { showToast('Classroom not found.', 'error'); return }
 
   const stus = _stus.filter(s => (room.student_regnos || []).includes(s.register_no))
-  _attSt   = {}
-  _attStus = stus
+  _attSt = {}; _attStus = stus
   stus.forEach(s => { _attSt[s.register_no] = null })
 
-  const today  = new Date().toISOString().split('T')[0]
-  const roomId = safeAttr(id)
+  const today = new Date().toISOString().split('T')[0]
 
   modal(`
   <div class="tc-mo open" id="mAtt">
     <div class="tc-mb tc-mb-md">
       <div class="tc-mh">
         <div class="tc-mt"><i class="fas fa-clipboard-check"></i> Mark Attendance — ${esc(room.class_name)}</div>
-        <button class="tc-mc" onclick="closeM('mAtt');openRoom('${roomId}')"><i class="fas fa-times"></i></button>
+        <button class="tc-mc" onclick="closeM('mAtt')"><i class="fas fa-times"></i></button>
       </div>
       <div class="tc-mbd">
         <div class="tc-sess-hdr">
-          <div>
-            <label>Date *</label>
-            <input id="attDate" type="date" value="${today}" class="ti" style="min-width:145px" />
-          </div>
-          <div>
-            <label>Period *</label>
+          <div><label>Date *</label>
+            <input id="attDate" type="date" value="${today}" class="ti" style="min-width:145px" /></div>
+          <div><label>Period *</label>
             <select id="attPer" class="ts" style="min-width:125px">
               ${[1,2,3,4,5,6,7,8].map(p => `<option value="${p}">Period ${p}</option>`).join('')}
-            </select>
-          </div>
-          <div>
-            <label>Subject Name *</label>
-            <input id="attSubj" class="ti" placeholder="e.g. Python, OOPS" value="${esc(room.subject || '')}" style="min-width:180px" />
-          </div>
+            </select></div>
+          <div><label>Subject Name *</label>
+            <input id="attSubj" class="ti" placeholder="e.g. Python, OOPS" value="${esc(room.subject || '')}" style="min-width:180px" /></div>
         </div>
         <div class="tc-bulk-row">
           <span class="tc-bulk-lbl">Mark All:</span>
@@ -1157,25 +1035,24 @@ window.openMarkAtt = id => {
         <div id="attList">
           ${stus.length
             ? stus.map(s => `
-              <div class="tc-att-row" id="ar-${s.register_no}">
+              <div class="tc-att-row" id="ar-${esc(s.register_no)}">
                 <div>
                   <div class="tc-att-sname">${esc(s.name || '—')}</div>
                   <div class="tc-att-sreg">${esc(s.register_no)}${s.department ? ' · ' + esc(s.department) : ''} · Yr ${s.year || '—'}</div>
                 </div>
                 <div class="tc-att-tog">
-                  <button class="tc-p" id="ap-${s.register_no}" onclick="markOne('${safeAttr(s.register_no)}','present')"><i class="fas fa-check"></i> P</button>
-                  <button class="tc-a" id="aa-${s.register_no}" onclick="markOne('${safeAttr(s.register_no)}','absent')"><i class="fas fa-times"></i> A</button>
+                  <button class="tc-p" id="ap-${esc(s.register_no)}" data-mark-present="${esc(s.register_no)}"><i class="fas fa-check"></i> P</button>
+                  <button class="tc-a" id="aa-${esc(s.register_no)}" data-mark-absent="${esc(s.register_no)}"><i class="fas fa-times"></i> A</button>
                 </div>
               </div>`).join('')
             : `<div style="text-align:center;padding:28px;color:var(--tmut)">
                 <i class="fas fa-users" style="font-size:2rem;opacity:.3;display:block;margin-bottom:10px"></i>
                 No student profiles found for this classroom.
-              </div>`
-          }
+              </div>`}
         </div>
         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;padding-top:15px;border-top:1px solid var(--tbord)">
-          <button class="tb tb-ghost tb-sm" onclick="closeM('mAtt');openRoom('${roomId}')">Cancel</button>
-          <button class="tb tb-pri" id="saveAttBtn" onclick="saveAtt('${roomId}')"><i class="fas fa-save"></i> Save Attendance</button>
+          <button class="tb tb-ghost tb-sm" onclick="closeM('mAtt')">Cancel</button>
+          <button class="tb tb-pri" id="saveAttBtn" data-save-att="${esc(room.id)}"><i class="fas fa-save"></i> Save Attendance</button>
         </div>
       </div>
     </div>
@@ -1183,130 +1060,79 @@ window.openMarkAtt = id => {
 }
 
 window.markOne = (regno, status) => {
+  if (!regno) return
   _attSt[regno] = status
-  const apBtn = document.getElementById('ap-' + regno)
-  const aaBtn = document.getElementById('aa-' + regno)
-  if (apBtn) apBtn.classList.toggle('on', status === 'present')
-  if (aaBtn) aaBtn.classList.toggle('on', status === 'absent')
+  document.getElementById('ap-' + regno)?.classList.toggle('on', status === 'present')
+  document.getElementById('aa-' + regno)?.classList.toggle('on', status === 'absent')
   const marked = Object.values(_attSt).filter(v => v !== null).length
   const tot    = _attStus.length || 1
-  const mn     = document.getElementById('markedN')
-  const bar    = document.getElementById('progBar')
-  if (mn)  mn.textContent  = marked
-  if (bar) bar.style.width = Math.round(marked / tot * 100) + '%'
+  const mn = document.getElementById('markedN'); if (mn) mn.textContent = marked
+  const bar = document.getElementById('progBar'); if (bar) bar.style.width = Math.round(marked / tot * 100) + '%'
 }
 
 window.markAll = s => _attStus.forEach(st => markOne(st.register_no, s))
 
 // ── SAVE ATTENDANCE ───────────────────────────────────────────
 window.saveAtt = async id => {
+  if (!id) return
   const date   = document.getElementById('attDate')?.value
   const period = parseInt(document.getElementById('attPer')?.value)
   const subj   = document.getElementById('attSubj')?.value?.trim()
 
-  if (!date || !period || !subj) {
-    showToast('Enter date, period AND subject name.', 'warning')
-    return
-  }
+  if (!date || !period || !subj) { showToast('Enter date, period AND subject name.', 'warning'); return }
 
   const unmarked = Object.values(_attSt).filter(v => v === null).length
   if (unmarked > 0 && !confirm(`${unmarked} student(s) not marked yet. Save anyway?`)) return
 
   const btn = document.getElementById('saveAttBtn')
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…' }
+  const resetBtn = () => { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save Attendance' } }
 
-  const resetBtn = () => {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save Attendance' }
-  }
+  const { data: sess, error: sErr } = await supabase.from('attendance_sessions')
+    .upsert({ classroom_id: id, teacher_regno: _regno, session_date: date, period, subject_name: subj },
+            { onConflict: 'classroom_id,session_date,period' })
+    .select().single()
 
-  // Upsert session record
-  const { data: sess, error: sErr } = await supabase
-    .from('attendance_sessions')
-    .upsert({
-      classroom_id:  id,
-      teacher_regno: _regno,
-      session_date:  date,
-      period,
-      subject_name:  subj
-    }, { onConflict: 'classroom_id,session_date,period' })
-    .select()
-    .single()
+  if (sErr) { showToast('Session error: ' + sErr.message, 'error'); resetBtn(); return }
 
-  if (sErr) {
-    showToast('Session error: ' + sErr.message, 'error')
-    resetBtn()
-    return
-  }
-
-  // Build attendance records for marked students
-  const records = _attStus
-    .filter(s => _attSt[s.register_no] !== null)
-    .map(s => ({
-      session_id:   sess.id,
-      classroom_id: id,
-      register_no:  s.register_no,
-      student_name: s.name || '',
-      status:       _attSt[s.register_no],
-      session_date: date,
-      period,
-      subject_name: subj
-    }))
+  const records = _attStus.filter(s => _attSt[s.register_no] !== null).map(s => ({
+    session_id: sess.id, classroom_id: id,
+    register_no: s.register_no, student_name: s.name || '',
+    status: _attSt[s.register_no], session_date: date, period, subject_name: subj
+  }))
 
   if (records.length) {
-    const { error: rErr } = await supabase
-      .from('attendance_records')
-      .upsert(records, { onConflict: 'session_id,register_no' })
-    if (rErr) {
-      showToast('Records error: ' + rErr.message, 'error')
-      resetBtn()
-      return
-    }
+    const { error: rErr } = await supabase.from('attendance_records').upsert(records, { onConflict: 'session_id,register_no' })
+    if (rErr) { showToast('Records error: ' + rErr.message, 'error'); resetBtn(); return }
   }
 
-  // Update student attendance_information table
-  await updateStudentAttendance(id, date, period, subj)
-
+  await updateStudentAttendance(id)
   showToast(`Attendance saved for ${records.length} students ✅ (${date} · Period ${period} · ${subj})`, 'success')
   resetBtn()
   closeM('mAtt')
-  // Reopen room to show updated sessions
   setTimeout(() => openRoom(id), 400)
 }
 
-// ── UPDATE STUDENT ATTENDANCE SUMMARY ─────────────────────────
-async function updateStudentAttendance(classroomId, date, period, subj) {
+// ── UPDATE STUDENT ATTENDANCE SUMMARY ────────────────────────
+async function updateStudentAttendance(classroomId) {
   try {
-    // Get all records for this session
-    const { data: allRecords } = await supabase
-      .from('attendance_records')
-      .select('register_no, status, session_date, period, subject_name')
-      .eq('classroom_id', classroomId)
-
+    const { data: allRecords } = await supabase.from('attendance_records')
+      .select('register_no, status, session_date, period, subject_name').eq('classroom_id', classroomId)
     if (!allRecords || !allRecords.length) return
 
-    // Group by student
     const byStudent = {}
     allRecords.forEach(r => {
       if (!byStudent[r.register_no]) byStudent[r.register_no] = []
       byStudent[r.register_no].push(r)
     })
 
-    // Update each student's attendance_information
     for (const [regno, records] of Object.entries(byStudent)) {
       const totalDays   = records.length
       const presentDays = records.filter(r => r.status === 'present').length
       const absentDays  = records.filter(r => r.status === 'absent').length
+      const absentDetails = records.filter(r => r.status === 'absent')
+        .map(r => ({ date: r.session_date, period: r.period, subject_name: r.subject_name }))
 
-      // Build absent details list
-      const absentDetails = records
-        .filter(r => r.status === 'absent')
-        .map(r => ({
-          date:         r.session_date,
-          period:       r.period,
-          subject_name: r.subject_name
-        }))
-
-      // Build period stats — group by date
       const statsByDate = {}
       records.forEach(r => {
         const d = r.session_date
@@ -1315,35 +1141,25 @@ async function updateStudentAttendance(classroomId, date, period, subj) {
         if (r.status === 'present') statsByDate[d].present++
         else statsByDate[d].absent++
       })
-      const periodStats = Object.values(statsByDate)
 
-      // Upsert into attendance_information
       await supabase.from('attendance_information').upsert({
-        register_no:    regno,
-        total_days:     totalDays,
-        present_days:   presentDays,
-        absent_days:    absentDays,
-        absent_details: absentDetails,
-        period_stats:   periodStats,
-        updated_at:     new Date().toISOString()
+        register_no: regno, total_days: totalDays, present_days: presentDays,
+        absent_days: absentDays, absent_details: absentDetails,
+        period_stats: Object.values(statsByDate), updated_at: new Date().toISOString()
       }, { onConflict: 'register_no' })
     }
-  } catch (err) {
-    console.error('updateStudentAttendance error:', err)
-  }
+  } catch (err) { console.error('updateStudentAttendance error:', err) }
 }
 
 // ── VIEW SESSION ──────────────────────────────────────────────
 window.viewSess = async sessId => {
+  if (!sessId) return
   const [recsRes, sessRes] = await Promise.all([
     supabase.from('attendance_records').select('*').eq('session_id', sessId).order('student_name'),
     supabase.from('attendance_sessions').select('*').eq('id', sessId).maybeSingle()
   ])
-
-  const recs = recsRes.data || []
-  const sess = sessRes.data || null
-  const pr   = recs.filter(r => r.status === 'present')
-  const ab   = recs.filter(r => r.status === 'absent')
+  const recs = recsRes.data || [], sess = sessRes.data || null
+  const pr = recs.filter(r => r.status === 'present'), ab = recs.filter(r => r.status === 'absent')
 
   modal(`
   <div class="tc-mo open" id="mSess">
@@ -1363,15 +1179,13 @@ window.viewSess = async sessId => {
         ${recs.length
           ? `<div class="tc-tbl-wrap"><table class="tc-tbl">
               <thead><tr><th>Student</th><th>Reg No</th><th>Status</th></tr></thead>
-              <tbody>
-                ${recs.map(r => `<tr>
-                  <td style="font-weight:700;color:#fff">${esc(r.student_name || '—')}</td>
-                  <td style="font-family:monospace;color:var(--tmut)">${esc(r.register_no)}</td>
-                  <td><span class="tbd ${r.status === 'present' ? 'tb-green' : 'tb-red'}">
-                    <i class="fas fa-${r.status === 'present' ? 'check' : 'times'}"></i> ${r.status}
-                  </span></td>
-                </tr>`).join('')}
-              </tbody>
+              <tbody>${recs.map(r => `<tr>
+                <td style="font-weight:700;color:#fff">${esc(r.student_name || '—')}</td>
+                <td style="font-family:monospace;color:var(--tmut)">${esc(r.register_no)}</td>
+                <td><span class="tbd ${r.status === 'present' ? 'tb-green' : 'tb-red'}">
+                  <i class="fas fa-${r.status === 'present' ? 'check' : 'times'}"></i> ${r.status}
+                </span></td>
+              </tr>`).join('')}</tbody>
             </table></div>`
           : `<div class="tc-empty"><div class="tc-empty-title">No records found for this session.</div></div>`}
         <div style="text-align:right;margin-top:15px">
@@ -1382,20 +1196,21 @@ window.viewSess = async sessId => {
   </div>`)
 }
 
-// ── EDIT CLASSROOM ────────────────────────────────────────────
-window.openEditRoom = id => {
-  const room = _rooms.find(r => r.id === id)
+// ── EDIT CLASSROOM — always fetches fresh ────────────────────
+window.openEditRoom = async id => {
+  if (!id) return
+  const room = await fetchRoom(id)
   if (!room) { showToast('Classroom not found.', 'error'); return }
+
   _selStu.clear()
   ;(room.student_regnos || []).forEach(r => _selStu.add(r))
-  const roomId = safeAttr(id)
 
   modal(`
   <div class="tc-mo open" id="mEdit">
     <div class="tc-mb tc-mb-lg">
       <div class="tc-mh">
         <div class="tc-mt"><i class="fas fa-edit"></i> Edit Classroom — ${esc(room.class_name)}</div>
-        <button class="tc-mc" onclick="closeM('mEdit');openRoom('${roomId}')"><i class="fas fa-times"></i></button>
+        <button class="tc-mc" onclick="closeM('mEdit')"><i class="fas fa-times"></i></button>
       </div>
       <div class="tc-mbd">
         <div class="tgrid" style="margin-bottom:18px">
@@ -1418,8 +1233,8 @@ window.openEditRoom = id => {
           <input id="stuSearch" class="ti" placeholder="Search name or reg no…" oninput="fltStus()" style="padding-left:37px" /></div>
         <div style="max-height:340px;overflow-y:auto;padding-right:3px" id="stuList">${stuSelHTML(grpStus(_stus))}</div>
         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;padding-top:15px;border-top:1px solid var(--tbord)">
-          <button class="tb tb-ghost tb-sm" onclick="closeM('mEdit');openRoom('${roomId}')">Cancel</button>
-          <button class="tb tb-pri" id="saveEditRoomBtn" onclick="saveEditRoom('${roomId}')"><i class="fas fa-save"></i> Save Changes</button>
+          <button class="tb tb-ghost tb-sm" onclick="closeM('mEdit')">Cancel</button>
+          <button class="tb tb-pri" id="saveEditRoomBtn" data-save-edit-room="${esc(room.id)}"><i class="fas fa-save"></i> Save Changes</button>
         </div>
       </div>
     </div>
@@ -1427,6 +1242,7 @@ window.openEditRoom = id => {
 }
 
 window.saveEditRoom = async id => {
+  if (!id) return
   const name = document.getElementById('ec_name')?.value?.trim()
   if (!name) { showToast('Classroom name is required.', 'warning'); return }
 
@@ -1438,29 +1254,15 @@ window.saveEditRoom = async id => {
   const year = parseInt(document.getElementById('ec_year')?.value) || null
 
   const { error } = await supabase.from('classrooms').update({
-    class_name:     name,
-    subject:        subj,
-    department:     dept,
-    year:           year,
-    student_regnos: [..._selStu],
-    updated_at:     new Date().toISOString()
+    class_name: name, subject: subj, department: dept, year,
+    student_regnos: [..._selStu], updated_at: new Date().toISOString()
   }).eq('id', id)
 
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save Changes' }
   if (error) { showToast('Failed: ' + error.message, 'error'); return }
 
-  // Update local cache
   const idx = _rooms.findIndex(r => r.id === id)
-  if (idx >= 0) {
-    _rooms[idx] = {
-      ..._rooms[idx],
-      class_name:     name,
-      subject:        subj,
-      department:     dept,
-      year:           year,
-      student_regnos: [..._selStu]
-    }
-  }
+  if (idx >= 0) _rooms[idx] = { ..._rooms[idx], class_name: name, subject: subj, department: dept, year, student_regnos: [..._selStu] }
 
   showToast('Classroom updated! ✅', 'success')
   closeM('mEdit')
