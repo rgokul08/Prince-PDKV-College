@@ -22,19 +22,21 @@ const DESIGS = [
   'Senior Lecturer','Lecturer','Lab Instructor','Teaching Assistant'
 ]
 
-let _regno   = null
-let _profile = null
-let _stus    = []
-let _rooms   = []
-const _selStu = new Set()
-let _attSt   = {}
-let _attStus = []
-let _rtCh    = null
+let _regno     = null
+let _profile   = null
+let _stus      = []
+let _rooms     = []
+const _selStu  = new Set()
+let _attSt     = {}
+let _attStus   = []
 let _roomsRtCh = null
 
 // ── BOOT ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  initStickyHeader(); initHamburger(); initPageTransitions(); initRipple()
+  initStickyHeader()
+  initHamburger()
+  initPageTransitions()
+  initRipple()
 
   const saved = sessionStorage.getItem(SESS_KEY)
   if (saved) {
@@ -70,10 +72,10 @@ function initFU() {
 
 // ── SECTION SWITCHER ──────────────────────────────────────────
 function showSec(id) {
-  ['login','loading','setup','profile'].forEach(s => {
+  ;['login','loading','setup','profile'].forEach(s => {
     const key = 'sec' + s.charAt(0).toUpperCase() + s.slice(1)
     const el  = document.getElementById(key)
-    if (el) el.style.display = s === id ? 'block' : 'none'
+    if (el) el.style.display = (s === id) ? 'block' : 'none'
   })
   setTimeout(initFU, 75)
 }
@@ -83,11 +85,16 @@ function esc(s) {
     .replace(/&/g,'&amp;').replace(/</g,'&lt;')
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
 }
+
 function fmtDate(d) {
   if (!d) return '—'
-  try { return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) }
-  catch { return d }
+  try {
+    return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', {
+      day:'2-digit', month:'short', year:'numeric'
+    })
+  } catch { return d }
 }
+
 function sfx(n) { return { 1:'st', 2:'nd', 3:'rd', 4:'th' }[n] || 'th' }
 
 // ── LOGIN ─────────────────────────────────────────────────────
@@ -95,55 +102,143 @@ async function doLogin(e) {
   e.preventDefault()
   const regno = document.getElementById('inRegno')?.value?.trim().toUpperCase()
   const pass  = document.getElementById('inPass')?.value
-  if (!regno || !pass) { setMsg('Enter Register No. & Password', 'err'); showToast('Enter Register No. & Password', 'warning'); return }
+  if (!regno || !pass) {
+    setMsg('Enter Register No. & Password', 'err')
+    showToast('Enter Register No. & Password', 'warning')
+    return
+  }
 
   const btn = document.getElementById('loginBtn')
-  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing In…'
+  btn.disabled = true
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing In…'
   clearMsg()
 
-  const [credRes, profileRes] = await Promise.all([
-    supabase.from('teacher_credentials').select('password').eq('register_no', regno).maybeSingle(),
-    supabase.from('teacher_information').select('*').ilike('register_no', regno).maybeSingle()
-  ])
+  try {
+    const [credRes, profileRes] = await Promise.all([
+      supabase.from('teacher_credentials').select('password').eq('register_no', regno).maybeSingle(),
+      supabase.from('teacher_information').select('*').ilike('register_no', regno).maybeSingle()
+    ])
 
-  btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In'
+    btn.disabled = false
+    btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In'
 
-  if (credRes.error || !credRes.data)    { setMsg('Register number not found.', 'err'); showToast('Register number not found.', 'error'); return }
-  if (credRes.data.password !== pass)    { setMsg('Incorrect password.', 'err'); showToast('Incorrect password.', 'error'); return }
+    if (credRes.error || !credRes.data) {
+      setMsg('Register number not found. Contact admin.', 'err')
+      showToast('Register number not found.', 'error')
+      return
+    }
+    if (credRes.data.password !== pass) {
+      setMsg('Incorrect password.', 'err')
+      showToast('Incorrect password.', 'error')
+      return
+    }
 
-  sessionStorage.setItem(SESS_KEY, regno)
-  _regno = regno
-  showToast(`Welcome, Teacher ${regno}!`, 'success')
+    sessionStorage.setItem(SESS_KEY, regno)
+    _regno = regno
+    showToast(`Welcome, Teacher ${regno}!`, 'success')
 
-  const t = profileRes.data || null
-  if (!t) {
-    showSec('setup')
-    await renderSetup(regno, null)
-  } else {
-    _profile = t
-    showSec('loading')
-    await loadClassroomsAndStudents()
-    showSec('profile')
-    await renderProfile(t)
-    setupRoomsRealtime()
+    const t = profileRes.data || null
+    if (!t) {
+      showSec('setup')
+      await renderSetup(regno, null)
+    } else {
+      _profile = t
+      showSec('loading')
+      await loadClassroomsAndStudents()
+      showSec('profile')
+      await renderProfile(t)
+      setupRoomsRealtime()
+    }
+  } catch (err) {
+    btn.disabled = false
+    btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In'
+    showToast('Login error: ' + err.message, 'error')
   }
 }
 
 function setMsg(txt, tp) {
-  const e = document.getElementById('loginMsg'); if (!e) return
+  const e = document.getElementById('loginMsg')
+  if (!e) return
   e.className = `tc-msg tc-${tp}`
   e.innerHTML = `<i class="fas fa-${tp === 'err' ? 'exclamation-circle' : 'check-circle'}"></i> ${txt}`
   e.style.display = 'flex'
 }
-function clearMsg() { const e = document.getElementById('loginMsg'); if (e) e.style.display = 'none' }
+
+function clearMsg() {
+  const e = document.getElementById('loginMsg')
+  if (e) e.style.display = 'none'
+}
 
 window.tcLogout = () => {
-  sessionStorage.removeItem(SESS_KEY); _regno = null; _profile = null
-  _rooms = []; _stus = []
-  if (_rtCh) { supabase.removeChannel(_rtCh); _rtCh = null }
+  sessionStorage.removeItem(SESS_KEY)
+  _regno   = null
+  _profile = null
+  _rooms   = []
+  _stus    = []
   if (_roomsRtCh) { supabase.removeChannel(_roomsRtCh); _roomsRtCh = null }
   showSec('login')
   showToast('Logged out.', 'info')
+}
+
+// ── LOAD PORTAL ───────────────────────────────────────────────
+async function loadPortal(regno) {
+  showSec('loading')
+  try {
+    const { data: t, error } = await supabase
+      .from('teacher_information').select('*').ilike('register_no', regno).maybeSingle()
+
+    if (error) {
+      showToast('Error loading profile: ' + error.message, 'error')
+      showSec('login')
+      return
+    }
+
+    if (!t) {
+      showSec('setup')
+      await renderSetup(regno, null)
+    } else {
+      _profile = t
+      await loadClassroomsAndStudents()
+      showSec('profile')
+      await renderProfile(t)
+      setupRoomsRealtime()
+    }
+  } catch (err) {
+    showToast('Failed to load portal. Please try again.', 'error')
+    showSec('login')
+  }
+}
+
+// ── LOAD CLASSROOMS & STUDENTS FROM SUPABASE ──────────────────
+async function loadClassroomsAndStudents() {
+  try {
+    const [sr, rr] = await Promise.all([
+      supabase
+        .from('student_information')
+        .select('register_no,name,year,department')
+        .order('year').order('department').order('name'),
+      supabase
+        .from('classrooms')
+        .select('*')
+        .order('created_at', { ascending: false })
+    ])
+
+    if (sr.error) {
+      console.error('Students load error:', sr.error)
+    } else {
+      _stus = sr.data || []
+    }
+
+    if (rr.error) {
+      console.error('Classrooms load error:', rr.error)
+    } else {
+      _rooms = rr.data || []
+    }
+  } catch (err) {
+    console.error('loadClassroomsAndStudents error:', err)
+    _stus  = []
+    _rooms = []
+  }
 }
 
 // ── IMAGE UPLOAD ──────────────────────────────────────────────
@@ -152,7 +247,7 @@ async function uploadTeacherImg(fileInputId, regno) {
   const f   = inp?.files?.[0]
   if (!f) return null
 
-  const ext  = f.name.split('.').pop().toLowerCase() || 'jpg'
+  const ext  = (f.name.split('.').pop() || 'jpg').toLowerCase()
   const storagePath = `${TCH_FOLD}/${regno}.${ext}`
 
   const { error } = await supabase.storage
@@ -188,7 +283,8 @@ async function findTeacherPhotoInBucket(regno) {
 
 function bindPrev(fId, wId, iId, rmId) {
   document.getElementById(fId)?.addEventListener('change', () => {
-    const f = document.getElementById(fId)?.files?.[0]; if (!f) return
+    const f = document.getElementById(fId)?.files?.[0]
+    if (!f) return
     const r = new FileReader()
     r.onload = ev => {
       const img  = document.getElementById(iId)
@@ -208,36 +304,6 @@ function bindPrev(fId, wId, iId, rmId) {
   })
 }
 
-// ── LOAD PORTAL ───────────────────────────────────────────────
-async function loadPortal(regno) {
-  showSec('loading')
-  try {
-    const { data: t, error } = await supabase
-      .from('teacher_information').select('*').ilike('register_no', regno).maybeSingle()
-
-    if (error) {
-      showToast('Error loading profile: ' + error.message, 'error')
-      showSec('login')
-      return
-    }
-
-    if (!t) {
-      showSec('setup')
-      await renderSetup(regno, null)
-    } else {
-      _profile = t
-      await loadClassroomsAndStudents()
-      showSec('profile')
-      await renderProfile(t)
-      setupRoomsRealtime()
-    }
-  } catch (err) {
-    console.error('loadPortal error:', err)
-    showToast('Failed to load portal. Please try again.', 'error')
-    showSec('login')
-  }
-}
-
 // ── SETUP FORM ────────────────────────────────────────────────
 async function renderSetup(regno, existingData) {
   if (existingData === undefined) {
@@ -248,10 +314,11 @@ async function renderSetup(regno, existingData) {
 
   const isEdit = !!existingData
   const d      = existingData || {}
-  const c      = document.getElementById('secSetup'); if (!c) return
+  const c      = document.getElementById('secSetup')
+  if (!c) return
 
-  const dO  = DEPTS.map(dep  => `<option ${d.department === dep  ? 'selected' : ''}>${esc(dep)}</option>`).join('')
-  const dsO = DESIGS.map(des => `<option ${d.designation === des ? 'selected' : ''}>${esc(des)}</option>`).join('')
+  const dO  = DEPTS.map(dep  => `<option ${d.department  === dep  ? 'selected' : ''}>${esc(dep)}</option>`).join('')
+  const dsO = DESIGS.map(des => `<option ${d.designation === des  ? 'selected' : ''}>${esc(des)}</option>`).join('')
   const gO  = ['Male','Female','Other'].map(g => `<option ${d.gender === g ? 'selected' : ''}>${g}</option>`).join('')
 
   c.innerHTML = `
@@ -331,29 +398,29 @@ async function renderSetup(regno, existingData) {
   bindPrev('f_img','tImgPrev','tImgPrevImg','tImgRm')
   setTimeout(initFU, 55)
 
-  // If editing with same email, pre-mark as verified
+  // Pre-mark email as verified if editing with same email
   if (isEdit && d.email) {
     markEmailVerified(d.email)
   }
 
-  // Inject the OTP widget onto the email field
+  // Inject OTP widget
   injectOtpWidget({
     emailInputId: 'f_email',
     widgetId:     'tc_email_otp',
     theme:        'dark-tc',
-    onVerified:   async (email) => {
+    onVerified:   async () => {
       const badge = document.getElementById('tc_email_verif_badge')
       if (badge) badge.style.display = 'inline'
     }
   })
 
-  // Show verified badge if email already verified (edit mode)
+  // Show verified badge if editing
   if (isEdit && d.email) {
     const badge = document.getElementById('tc_email_verif_badge')
     if (badge) badge.style.display = 'inline'
   }
 
-  // Reset badge when email changes
+  // Reset badge on email change
   document.getElementById('f_email')?.addEventListener('input', () => {
     const cur   = document.getElementById('f_email')?.value?.trim().toLowerCase()
     const badge = document.getElementById('tc_email_verif_badge')
@@ -363,16 +430,20 @@ async function renderSetup(regno, existingData) {
   document.getElementById('setupForm').addEventListener('submit', async ev => {
     ev.preventDefault()
 
-    const g = id => document.getElementById(id)?.value?.trim() || null
-    const name  = g('f_name'); const email = g('f_email')
-    const phone = g('f_phone'); const gender = g('f_gender')
-    const dept  = g('f_dept');  const desig  = g('f_desig'); const qual = g('f_qual')
+    const g    = id => document.getElementById(id)?.value?.trim() || null
+    const name  = g('f_name')
+    const email = g('f_email')
+    const phone = g('f_phone')
+    const gender = g('f_gender')
+    const dept  = g('f_dept')
+    const desig = g('f_desig')
+    const qual  = g('f_qual')
 
     if (!name || !email || !phone || !gender || !dept || !desig || !qual) {
-      showToast('Fill required fields (*)', 'warning'); return
+      showToast('Fill all required (*) fields', 'warning')
+      return
     }
 
-    // EMAIL OTP VERIFICATION CHECK
     if (!isEmailVerified(email)) {
       showToast('Please verify your email with OTP before saving.', 'warning')
       const widget = document.getElementById('tc_email_otp')
@@ -384,7 +455,7 @@ async function renderSetup(regno, existingData) {
   })
 }
 
-// ── CORE SAVE PROFILE ─────────────────────────────────────────
+// ── SAVE PROFILE ──────────────────────────────────────────────
 async function doSaveProfile({ name, email, phone, gender, dept, desig, qual, g, d, isEdit }) {
   const btn = document.getElementById('setupBtn')
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…' }
@@ -418,7 +489,10 @@ async function doSaveProfile({ name, email, phone, gender, dept, desig, qual, g,
   const { error } = await supabase.from('teacher_information')
     .upsert(payload, { onConflict: 'register_no' })
 
-  if (btn) { btn.disabled = false; btn.innerHTML = `<i class="fas fa-save"></i> ${isEdit ? 'Update My Profile' : 'Save My Profile'}` }
+  if (btn) {
+    btn.disabled = false
+    btn.innerHTML = `<i class="fas fa-save"></i> ${isEdit ? 'Update My Profile' : 'Save My Profile'}`
+  }
 
   if (error) { showToast('Save failed: ' + error.message, 'error'); return }
 
@@ -446,49 +520,14 @@ window.tcEdit = async () => {
 }
 
 window.tcCancelEdit = () => {
-  if (!_regno) return
+  if (!_profile) return
   showSec('profile')
-}
-
-// ── LOAD CLASSROOMS & STUDENTS FROM SUPABASE ──────────────────
-async function loadClassroomsAndStudents() {
-  try {
-    const [sr, rr] = await Promise.all([
-      supabase
-        .from('student_information')
-        .select('register_no,name,year,department')
-        .order('year').order('department').order('name'),
-      supabase
-        .from('classrooms')
-        .select('*')
-        .order('created_at', { ascending: false })
-    ])
-
-    if (sr.error) {
-      console.error('Students load error:', sr.error)
-      showToast('Could not load students: ' + sr.error.message, 'warning')
-    } else {
-      _stus = sr.data || []
-    }
-
-    if (rr.error) {
-      console.error('Classrooms load error:', rr.error)
-      showToast('Could not load classrooms: ' + rr.error.message, 'warning')
-    } else {
-      _rooms = rr.data || []
-    }
-
-    console.log(`Loaded ${_stus.length} students, ${_rooms.length} classrooms`)
-  } catch (err) {
-    console.error('loadClassroomsAndStudents error:', err)
-    _stus = []
-    _rooms = []
-  }
 }
 
 // ── RENDER PROFILE ─────────────────────────────────────────────
 async function renderProfile(t) {
-  const c = document.getElementById('secProfile'); if (!c) return
+  const c = document.getElementById('secProfile')
+  if (!c) return
 
   const fallbackPhoto = `https://ui-avatars.com/api/?name=${encodeURIComponent(t.name || t.register_no)}&background=f59e0b&color=060912&size=300&bold=true`
 
@@ -510,7 +549,6 @@ async function renderProfile(t) {
 
   c.innerHTML = `
   <div class="tc-wrap">
-    <!-- PROFILE HERO CARD -->
     <div class="tg tc-prof-card-new tu" style="margin-bottom:22px;">
       <div class="tc-photo-center-wrap">
         <div class="tc-photo-ring-outer">
@@ -543,7 +581,6 @@ async function renderProfile(t) {
       </div>
     </div>
 
-    <!-- INFO GRID -->
     <div class="tc-info-grid tu">
       ${tci('fas fa-envelope','tci-amb','Email',t.email)}
       ${tci('fas fa-phone','tci-tel','Phone',t.phone)}
@@ -558,7 +595,7 @@ async function renderProfile(t) {
     ${subjs.length ? `
     <div class="tg tc-subj-wrap tu">
       <div class="tc-subj-h"><i class="fas fa-book-open"></i> Subjects Handling</div>
-      <div class="tc-subj-chips">${subjs.map((s,i)=>`<span class="tc-schip" style="animation-delay:${i*.06}s"><i class="fas fa-book"></i> ${esc(s)}</span>`).join('')}</div>
+      <div class="tc-subj-chips">${subjs.map((s,i) => `<span class="tc-schip" style="animation-delay:${i*.06}s"><i class="fas fa-book"></i> ${esc(s)}</span>`).join('')}</div>
     </div>` : ''}
 
     <div id="attMgr" class="tu"></div>
@@ -597,7 +634,7 @@ async function renderProfile(t) {
 
   setTimeout(initFU, 80)
 
-  // Render attendance manager (classrooms already loaded)
+  // Now render the attendance manager
   renderAttMgr()
 }
 
@@ -612,11 +649,10 @@ function tci(ico, cls, lbl, val) {
 function setupRoomsRealtime() {
   if (_roomsRtCh) { supabase.removeChannel(_roomsRtCh); _roomsRtCh = null }
 
-  _roomsRtCh = supabase.channel('tc-rooms-live-' + Date.now())
+  _roomsRtCh = supabase.channel('tc-rooms-live-' + _regno + '-' + Date.now())
     .on('postgres_changes', {
       event: '*', schema: 'public', table: 'classrooms'
-    }, async (payload) => {
-      console.log('Classroom realtime event:', payload.eventType)
+    }, async () => {
       const { data, error } = await supabase
         .from('classrooms')
         .select('*')
@@ -626,27 +662,17 @@ function setupRoomsRealtime() {
         refreshGrids()
       }
     })
-    .subscribe((status) => {
-      console.log('Rooms realtime subscription status:', status)
-    })
+    .subscribe()
 }
 
 // ── ATTENDANCE MANAGER ────────────────────────────────────────
 function renderAttMgr() {
   const c = document.getElementById('attMgr')
-  if (!c) {
-    console.error('attMgr element not found!')
-    return
-  }
+  if (!c) return
 
-  // Filter classrooms where this teacher is the owner
-  const mine = _rooms.filter(r => {
-    const roomRegno = (r.teacher_regno || '').toUpperCase().trim()
-    const myRegno   = (_regno || '').toUpperCase().trim()
-    return roomRegno === myRegno
-  })
-
-  console.log(`renderAttMgr: total rooms=${_rooms.length}, mine=${mine.length}, regno=${_regno}`)
+  const mine = _rooms.filter(r =>
+    (r.teacher_regno || '').toUpperCase().trim() === (_regno || '').toUpperCase().trim()
+  )
 
   c.innerHTML = `
   <div style="margin-top:30px">
@@ -654,11 +680,11 @@ function renderAttMgr() {
     <div class="tc-tabs">
       <button class="tc-tab on" id="tabMy" onclick="tcTab('my',this)">
         <i class="fas fa-door-open"></i> My Classrooms
-        <span style="margin-left:5px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.3);color:var(--tc-amber);padding:1px 8px;border-radius:50px;font-size:.72rem;" id="badgeMine">${mine.length}</span>
+        <span id="badgeMine" style="margin-left:5px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.3);color:var(--tc-amber);padding:1px 8px;border-radius:50px;font-size:.72rem;">${mine.length}</span>
       </button>
       <button class="tc-tab" id="tabAll" onclick="tcTab('all',this)">
         <i class="fas fa-list"></i> All Classrooms
-        <span style="margin-left:5px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.25);color:var(--tc-blue);padding:1px 8px;border-radius:50px;font-size:.72rem;" id="badgeAll">${_rooms.length}</span>
+        <span id="badgeAll" style="margin-left:5px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.25);color:var(--tc-blue);padding:1px 8px;border-radius:50px;font-size:.72rem;">${_rooms.length}</span>
       </button>
     </div>
     <div id="panMy" class="tc-tpanel on">
@@ -674,15 +700,16 @@ function renderAttMgr() {
 }
 
 function clsGrid(rooms, mine) {
-  if (!rooms.length) return `<div class="tc-empty" style="grid-column:1/-1">
-    <div class="tc-empty-ico">🏫</div>
-    <div class="tc-empty-title">${mine ? 'No Classrooms Yet' : 'No Classrooms Found'}</div>
-    <div class="tc-empty-sub">${mine ? 'Click "Create Classroom" to get started.' : 'No classrooms have been created yet.'}</div>
-  </div>`
+  if (!rooms.length) {
+    return `<div class="tc-empty" style="grid-column:1/-1">
+      <div class="tc-empty-ico">🏫</div>
+      <div class="tc-empty-title">${mine ? 'No Classrooms Yet' : 'No Classrooms Found'}</div>
+      <div class="tc-empty-sub">${mine ? 'Click "Create Classroom" to get started.' : 'No classrooms have been created yet.'}</div>
+    </div>`
+  }
 
   let h = rooms.map(r => {
-    // Safely encode the ID for use in onclick
-    const safeId = (r.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const safeId = safeAttr(r.id)
     return `
     <div class="tg tc-cls-card" onclick="openRoom('${safeId}')" style="cursor:pointer;">
       <div class="tc-cls-ico"><i class="fas fa-door-open"></i></div>
@@ -700,6 +727,7 @@ function clsGrid(rooms, mine) {
   return h
 }
 
+// ── TAB SWITCH ────────────────────────────────────────────────
 window.tcTab = (t, btn) => {
   document.querySelectorAll('.tc-tab').forEach(b => b.classList.remove('on'))
   btn.classList.add('on')
@@ -710,69 +738,61 @@ window.tcTab = (t, btn) => {
 }
 
 function refreshGrids() {
-  const mine = _rooms.filter(r => {
-    const roomRegno = (r.teacher_regno || '').toUpperCase().trim()
-    const myRegno   = (_regno || '').toUpperCase().trim()
-    return roomRegno === myRegno
-  })
+  const mine = _rooms.filter(r =>
+    (r.teacher_regno || '').toUpperCase().trim() === (_regno || '').toUpperCase().trim()
+  )
 
   const gm = document.getElementById('gMy')
   const ga = document.getElementById('gAll')
   if (gm) gm.innerHTML = clsGrid(mine, true)
   if (ga) ga.innerHTML = clsGrid(_rooms, false)
 
-  // Update badge counts
   const badgeMine = document.getElementById('badgeMine')
   const badgeAll  = document.getElementById('badgeAll')
   if (badgeMine) badgeMine.textContent = mine.length
   if (badgeAll)  badgeAll.textContent  = _rooms.length
-
-  // Update tab labels too (old IDs for backward compat)
-  const tabMy  = document.getElementById('tabMy')
-  const tabAll = document.getElementById('tabAll')
-  if (tabMy) {
-    const badge = tabMy.querySelector('span')
-    if (badge) badge.textContent = mine.length
-  }
-  if (tabAll) {
-    const badge = tabAll.querySelector('span')
-    if (badge) badge.textContent = _rooms.length
-  }
 }
 
 // ── MODAL SYSTEM ──────────────────────────────────────────────
-function modal(h) {
-  const container = document.getElementById('tcModals')
-  if (container) {
-    container.innerHTML = h
-  } else {
-    // Fallback: append to body
-    const div = document.createElement('div')
-    div.id = 'tcModals_fallback'
-    div.innerHTML = h
-    document.body.appendChild(div)
+// We keep modals in a persistent container — never clear until user dismisses
+function getModalContainer() {
+  let container = document.getElementById('tcModals')
+  if (!container) {
+    container = document.createElement('div')
+    container.id = 'tcModals'
+    document.body.appendChild(container)
   }
+  return container
+}
+
+function modal(h) {
+  getModalContainer().innerHTML = h
 }
 
 window.closeM = id => {
   const e = document.getElementById(id)
   if (e) {
     e.classList.remove('open')
-    // After animation, clean up
+    // Delay cleanup so CSS transitions can play
     setTimeout(() => {
       const container = document.getElementById('tcModals')
       if (container) container.innerHTML = ''
-      const fallback = document.getElementById('tcModals_fallback')
-      if (fallback) fallback.remove()
-    }, 300)
+    }, 350)
   }
+}
+
+// ── SAFE ATTRIBUTE ENCODING ───────────────────────────────────
+function safeAttr(str) {
+  // Encode for use inside single-quoted onclick attributes
+  return String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
 }
 
 // ── STUDENT GROUPING ──────────────────────────────────────────
 function grpStus(stus) {
   const g = {}
   stus.forEach(s => {
-    const y = s.year || '?', d = s.department || 'Unknown'
+    const y = s.year || '?'
+    const d = s.department || 'Unknown'
     if (!g[y]) g[y] = {}
     if (!g[y][d]) g[y][d] = []
     g[y][d].push(s)
@@ -782,10 +802,14 @@ function grpStus(stus) {
 
 function stuSelHTML(groups, filter = '') {
   const yrs = Object.keys(groups).map(Number).sort((a, b) => a - b)
-  if (!yrs.length) return `<div style="text-align:center;padding:20px;color:var(--tmut)">No students in system.</div>`
-  return yrs.map(yr => {
+  if (!yrs.length) {
+    return `<div style="text-align:center;padding:20px;color:var(--tmut)">No students in system yet.</div>`
+  }
+  let html = ''
+  yrs.forEach(yr => {
     const depts = Object.keys(groups[yr]).sort()
-    const dh = depts.map(d => {
+    let deptHtml = ''
+    depts.forEach(d => {
       let stus = groups[yr][d]
       if (filter) {
         const q = filter.toLowerCase()
@@ -794,32 +818,37 @@ function stuSelHTML(groups, filter = '') {
           (s.register_no || '').toLowerCase().includes(q)
         )
       }
-      if (!stus.length) return ''
-      const safeD = encodeURIComponent(d)
-      return `<div class="tc-dp-blk">
+      if (!stus.length) return
+      const safeD    = encodeURIComponent(d)
+      const allSel   = stus.every(s => _selStu.has(s.register_no))
+      deptHtml += `<div class="tc-dp-blk">
         <div class="tc-dp-title">
           <span><i class="fas fa-building"></i> ${esc(d)}</span>
           <button type="button" class="tc-dp-sall" onclick="selDept(${yr},'${safeD}')">
-            ${stus.every(s => _selStu.has(s.register_no)) ? 'Deselect All' : 'Select All'}
+            ${allSel ? 'Deselect All' : 'Select All'}
           </button>
         </div>
         ${stus.map(s => `
-          <div class="tc-sr${_selStu.has(s.register_no) ? ' sel' : ''}" id="r-${s.register_no}" onclick="selS('${s.register_no}')">
-            <div><div class="tc-sr-name">${esc(s.name || '—')}</div>
-            <div class="tc-sr-meta">${esc(s.register_no)} · ${esc(d)}</div></div>
+          <div class="tc-sr${_selStu.has(s.register_no) ? ' sel' : ''}" id="r-${s.register_no}" onclick="selS('${safeAttr(s.register_no)}')">
+            <div>
+              <div class="tc-sr-name">${esc(s.name || '—')}</div>
+              <div class="tc-sr-meta">${esc(s.register_no)} · ${esc(d)}</div>
+            </div>
             <div class="tc-sr-chk" id="ck-${s.register_no}">${_selStu.has(s.register_no) ? '✓' : ''}</div>
           </div>`).join('')}
       </div>`
-    }).join('')
-    if (!dh.replace(/<[^>]*>/g, '').trim()) return ''
-    return `<div class="tc-yr-blk">
-      <div class="tc-yr-title"><i class="fas fa-layer-group"></i> Year ${yr}${sfx(yr)}</div>${dh}
+    })
+    if (!deptHtml.trim()) return
+    html += `<div class="tc-yr-blk">
+      <div class="tc-yr-title"><i class="fas fa-layer-group"></i> Year ${yr}${sfx(yr)}</div>
+      ${deptHtml}
     </div>`
-  }).join('')
+  })
+  return html || `<div style="text-align:center;padding:20px;color:var(--tmut)">No matching students.</div>`
 }
 
-function updSelCnt(id = 'selCnt') {
-  const e = document.getElementById(id)
+function updSelCnt() {
+  const e = document.getElementById('selCnt')
   if (e) e.textContent = `${_selStu.size} Selected`
 }
 
@@ -833,8 +862,8 @@ window.selS = regno => {
 }
 
 window.selDept = (yr, dEnc) => {
-  const d     = decodeURIComponent(dEnc)
-  const stus  = _stus.filter(s => s.department === d && String(s.year) === String(yr))
+  const d      = decodeURIComponent(dEnc)
+  const stus   = _stus.filter(s => s.department === d && String(s.year) === String(yr))
   const allSel = stus.every(s => _selStu.has(s.register_no))
   stus.forEach(s => allSel ? _selStu.delete(s.register_no) : _selStu.add(s.register_no))
   const q  = document.getElementById('stuSearch')?.value || ''
@@ -869,7 +898,7 @@ window.openCreate = () => {
             <input id="cc_dept" class="ti" placeholder="Department" /></div>
           <div class="tg-fg"><label class="tl"><i class="fas fa-layer-group"></i> Year (optional)</label>
             <select id="cc_year" class="ts"><option value="">Any Year</option>
-              ${[1,2,3,4].map(n=>`<option value="${n}">${n}${sfx(n)} Year</option>`).join('')}
+              ${[1,2,3,4].map(n => `<option value="${n}">${n}${sfx(n)} Year</option>`).join('')}
             </select></div>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;flex-wrap:wrap;gap:8px">
@@ -888,7 +917,7 @@ window.openCreate = () => {
   </div>`)
 }
 
-// ── SAVE CLASSROOM TO SUPABASE ─────────────────────────────────
+// ── SAVE CLASSROOM ─────────────────────────────────────────────
 window.saveRoom = async () => {
   const name = document.getElementById('cc_name')?.value?.trim()
   const subj = document.getElementById('cc_subj')?.value?.trim() || null
@@ -908,8 +937,6 @@ window.saveRoom = async () => {
     student_regnos: [..._selStu]
   }
 
-  console.log('Creating classroom with payload:', payload)
-
   const { data, error } = await supabase
     .from('classrooms')
     .insert(payload)
@@ -918,16 +945,9 @@ window.saveRoom = async () => {
 
   if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="fas fa-save"></i> Create Classroom' }
 
-  if (error) {
-    console.error('Create classroom error:', error)
-    showToast('Failed to create classroom: ' + error.message, 'error')
-    return
-  }
+  if (error) { showToast('Failed to create classroom: ' + error.message, 'error'); return }
 
-  console.log('Classroom created:', data)
   showToast(`Classroom "${name}" created! 🎉`, 'success')
-
-  // Update local cache
   _rooms.unshift(data)
   closeM('mCreate')
   refreshGrids()
@@ -935,9 +955,7 @@ window.saveRoom = async () => {
 
 // ── OPEN ROOM ─────────────────────────────────────────────────
 window.openRoom = async id => {
-  console.log('Opening room:', id)
-
-  // Always fetch fresh from Supabase
+  // Fetch fresh from Supabase
   const { data: roomData, error: roomErr } = await supabase
     .from('classrooms')
     .select('*')
@@ -945,7 +963,6 @@ window.openRoom = async id => {
     .maybeSingle()
 
   if (roomErr || !roomData) {
-    console.error('openRoom error:', roomErr)
     showToast('Could not load classroom data.', 'error')
     return
   }
@@ -955,20 +972,30 @@ window.openRoom = async id => {
   if (idx >= 0) _rooms[idx] = roomData
   else _rooms.unshift(roomData)
 
-  const room  = roomData
-  const stus  = _stus.filter(s => (room.student_regnos || []).includes(s.register_no))
+  const room = roomData
+  const stus = _stus.filter(s => (room.student_regnos || []).includes(s.register_no))
+
+  // Load recent sessions (last 30 days for better visibility)
   const cutoffDate = new Date()
-  cutoffDate.setDate(cutoffDate.getDate() - 7)
+  cutoffDate.setDate(cutoffDate.getDate() - 30)
   const cutoffISO = cutoffDate.toISOString().split('T')[0]
 
-  const { data: sessions = [] } = await supabase.from('attendance_sessions')
-    .select('*').eq('classroom_id', id)
+  const { data: sessions, error: sessErr } = await supabase
+    .from('attendance_sessions')
+    .select('*')
+    .eq('classroom_id', id)
     .gte('session_date', cutoffISO)
-    .order('session_date', { ascending: false }).order('period').limit(20)
+    .order('session_date', { ascending: false })
+    .order('period', { ascending: true })
+    .limit(30)
 
-  const sessRows = (sessions || []).length
-    ? (sessions || []).map(s => {
-        const sid = (s.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+  if (sessErr) console.error('Sessions load error:', sessErr)
+
+  const sessionList = sessions || []
+
+  const sessRows = sessionList.length
+    ? sessionList.map(s => {
+        const sid = safeAttr(s.id)
         return `<tr>
           <td>${fmtDate(s.session_date)}</td>
           <td>Period ${s.period}</td>
@@ -977,9 +1004,9 @@ window.openRoom = async id => {
           <td><button class="tb tb-ghost tb-sm" onclick="viewSess('${sid}')"><i class="fas fa-eye"></i> View</button></td>
         </tr>`
       }).join('')
-    : `<tr><td colspan="5" style="text-align:center;color:var(--tmut);padding:20px">No sessions in the last 7 days.</td></tr>`
+    : `<tr><td colspan="5" style="text-align:center;color:var(--tmut);padding:20px">No sessions in the last 30 days.</td></tr>`
 
-  const roomId = (room.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+  const roomId = safeAttr(room.id)
 
   modal(`
   <div class="tc-mo open" id="mRoom">
@@ -1004,15 +1031,22 @@ window.openRoom = async id => {
             <button class="tb tb-danger tb-sm" onclick="confirmDeleteRoom('${roomId}')"><i class="fas fa-trash"></i> Delete</button>
           </div>
         </div>
+
         <div style="margin-bottom:20px">
-          <div style="font-size:.9rem;color:#fff;font-weight:700;margin-bottom:11px"><i class="fas fa-history" style="color:var(--tamb)"></i> Attendance Sessions (Last 7 Days)</div>
+          <div style="font-size:.9rem;color:#fff;font-weight:700;margin-bottom:11px">
+            <i class="fas fa-history" style="color:var(--tamb)"></i> Attendance Sessions (Last 30 Days)
+            <span style="font-size:.75rem;color:var(--tmut);font-weight:400;margin-left:8px">${sessionList.length} session(s)</span>
+          </div>
           <div class="tc-tbl-wrap"><table class="tc-tbl">
             <thead><tr><th>Date</th><th>Period</th><th>Subject</th><th>Students</th><th>Action</th></tr></thead>
             <tbody>${sessRows}</tbody>
           </table></div>
         </div>
+
         <div>
-          <div style="font-size:.9rem;color:#fff;font-weight:700;margin-bottom:10px"><i class="fas fa-users" style="color:var(--tamb)"></i> Students (${stus.length})</div>
+          <div style="font-size:.9rem;color:#fff;font-weight:700;margin-bottom:10px">
+            <i class="fas fa-users" style="color:var(--tamb)"></i> Students (${stus.length})
+          </div>
           <div style="display:flex;flex-wrap:wrap;gap:7px">
             ${stus.length
               ? stus.map(s => `<span class="tbd tb-teal"><i class="fas fa-user"></i> ${esc(s.name || s.register_no)}</span>`).join('')
@@ -1029,7 +1063,7 @@ window.openRoom = async id => {
 window.confirmDeleteRoom = (id) => {
   const room = _rooms.find(r => r.id === id)
   if (!room) { showToast('Classroom not found.', 'error'); return }
-  const roomId = (id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+  const roomId = safeAttr(id)
   modal(`
   <div class="tc-mo open" id="mDeleteConfirm">
     <div class="tc-mb tc-mb-sm">
@@ -1058,7 +1092,7 @@ window.deleteRoom = async (id) => {
   const btn = document.getElementById('deleteRoomBtn')
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting…' }
 
-  // Delete related attendance records and sessions first
+  // Delete related records first, then sessions, then classroom
   await supabase.from('attendance_records').delete().eq('classroom_id', id)
   await supabase.from('attendance_sessions').delete().eq('classroom_id', id)
   const { error } = await supabase.from('classrooms').delete().eq('id', id)
@@ -1076,10 +1110,14 @@ window.deleteRoom = async (id) => {
 window.openMarkAtt = id => {
   const room = _rooms.find(r => r.id === id)
   if (!room) { showToast('Classroom not found.', 'error'); return }
+
   const stus = _stus.filter(s => (room.student_regnos || []).includes(s.register_no))
-  _attSt = {}; stus.forEach(s => { _attSt[s.register_no] = null }); _attStus = stus
-  const today = new Date().toISOString().split('T')[0]
-  const roomId = (id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+  _attSt   = {}
+  _attStus = stus
+  stus.forEach(s => { _attSt[s.register_no] = null })
+
+  const today  = new Date().toISOString().split('T')[0]
+  const roomId = safeAttr(id)
 
   modal(`
   <div class="tc-mo open" id="mAtt">
@@ -1090,13 +1128,20 @@ window.openMarkAtt = id => {
       </div>
       <div class="tc-mbd">
         <div class="tc-sess-hdr">
-          <div><label>Date *</label><input id="attDate" type="date" value="${today}" class="ti" style="min-width:145px" /></div>
-          <div><label>Period *</label>
+          <div>
+            <label>Date *</label>
+            <input id="attDate" type="date" value="${today}" class="ti" style="min-width:145px" />
+          </div>
+          <div>
+            <label>Period *</label>
             <select id="attPer" class="ts" style="min-width:125px">
               ${[1,2,3,4,5,6,7,8].map(p => `<option value="${p}">Period ${p}</option>`).join('')}
-            </select></div>
-          <div><label>Subject Name *</label>
-            <input id="attSubj" class="ti" placeholder="e.g. Python, OOPS" value="${esc(room.subject || '')}" style="min-width:180px" /></div>
+            </select>
+          </div>
+          <div>
+            <label>Subject Name *</label>
+            <input id="attSubj" class="ti" placeholder="e.g. Python, OOPS" value="${esc(room.subject || '')}" style="min-width:180px" />
+          </div>
         </div>
         <div class="tc-bulk-row">
           <span class="tc-bulk-lbl">Mark All:</span>
@@ -1113,14 +1158,19 @@ window.openMarkAtt = id => {
           ${stus.length
             ? stus.map(s => `
               <div class="tc-att-row" id="ar-${s.register_no}">
-                <div><div class="tc-att-sname">${esc(s.name || '—')}</div>
-                <div class="tc-att-sreg">${esc(s.register_no)}${s.department ? ' · ' + esc(s.department) : ''} · Yr ${s.year || '—'}</div></div>
+                <div>
+                  <div class="tc-att-sname">${esc(s.name || '—')}</div>
+                  <div class="tc-att-sreg">${esc(s.register_no)}${s.department ? ' · ' + esc(s.department) : ''} · Yr ${s.year || '—'}</div>
+                </div>
                 <div class="tc-att-tog">
-                  <button class="tc-p" id="ap-${s.register_no}" onclick="markOne('${s.register_no}','present')"><i class="fas fa-check"></i> P</button>
-                  <button class="tc-a" id="aa-${s.register_no}" onclick="markOne('${s.register_no}','absent')"><i class="fas fa-times"></i> A</button>
+                  <button class="tc-p" id="ap-${s.register_no}" onclick="markOne('${safeAttr(s.register_no)}','present')"><i class="fas fa-check"></i> P</button>
+                  <button class="tc-a" id="aa-${s.register_no}" onclick="markOne('${safeAttr(s.register_no)}','absent')"><i class="fas fa-times"></i> A</button>
                 </div>
               </div>`).join('')
-            : '<div style="text-align:center;padding:28px;color:var(--tmut)"><i class="fas fa-users" style="font-size:2rem;opacity:.3;display:block;margin-bottom:10px"></i>No student profiles found for this classroom.</div>'
+            : `<div style="text-align:center;padding:28px;color:var(--tmut)">
+                <i class="fas fa-users" style="font-size:2rem;opacity:.3;display:block;margin-bottom:10px"></i>
+                No student profiles found for this classroom.
+              </div>`
           }
         </div>
         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;padding-top:15px;border-top:1px solid var(--tbord)">
@@ -1140,95 +1190,190 @@ window.markOne = (regno, status) => {
   if (aaBtn) aaBtn.classList.toggle('on', status === 'absent')
   const marked = Object.values(_attSt).filter(v => v !== null).length
   const tot    = _attStus.length || 1
-  const mn     = document.getElementById('markedN'); if (mn) mn.textContent = marked
-  const bar    = document.getElementById('progBar'); if (bar) bar.style.width = Math.round(marked / tot * 100) + '%'
+  const mn     = document.getElementById('markedN')
+  const bar    = document.getElementById('progBar')
+  if (mn)  mn.textContent  = marked
+  if (bar) bar.style.width = Math.round(marked / tot * 100) + '%'
 }
 
 window.markAll = s => _attStus.forEach(st => markOne(st.register_no, s))
 
-// ── SAVE ATTENDANCE TO SUPABASE ───────────────────────────────
+// ── SAVE ATTENDANCE ───────────────────────────────────────────
 window.saveAtt = async id => {
   const date   = document.getElementById('attDate')?.value
   const period = parseInt(document.getElementById('attPer')?.value)
   const subj   = document.getElementById('attSubj')?.value?.trim()
 
-  if (!date || !period || !subj) { showToast('Enter date, period AND subject name.', 'warning'); return }
+  if (!date || !period || !subj) {
+    showToast('Enter date, period AND subject name.', 'warning')
+    return
+  }
 
   const unmarked = Object.values(_attSt).filter(v => v === null).length
-  if (unmarked > 0 && !confirm(`${unmarked} student(s) not marked yet. Proceed?`)) return
+  if (unmarked > 0 && !confirm(`${unmarked} student(s) not marked yet. Save anyway?`)) return
 
   const btn = document.getElementById('saveAttBtn')
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…' }
 
-  const resetBtn = () => { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save Attendance' } }
+  const resetBtn = () => {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save Attendance' }
+  }
 
   // Upsert session record
-  const { data: sess, error: sErr } = await supabase.from('attendance_sessions')
+  const { data: sess, error: sErr } = await supabase
+    .from('attendance_sessions')
     .upsert({
-      classroom_id: id, teacher_regno: _regno,
-      session_date: date, period, subject_name: subj
+      classroom_id:  id,
+      teacher_regno: _regno,
+      session_date:  date,
+      period,
+      subject_name:  subj
     }, { onConflict: 'classroom_id,session_date,period' })
-    .select().single()
+    .select()
+    .single()
 
-  if (sErr) { showToast('Session error: ' + sErr.message, 'error'); resetBtn(); return }
+  if (sErr) {
+    showToast('Session error: ' + sErr.message, 'error')
+    resetBtn()
+    return
+  }
 
-  // Build attendance records
+  // Build attendance records for marked students
   const records = _attStus
     .filter(s => _attSt[s.register_no] !== null)
     .map(s => ({
-      session_id: sess.id, classroom_id: id,
-      register_no: s.register_no, student_name: s.name || '',
-      status: _attSt[s.register_no],
-      session_date: date, period, subject_name: subj
+      session_id:   sess.id,
+      classroom_id: id,
+      register_no:  s.register_no,
+      student_name: s.name || '',
+      status:       _attSt[s.register_no],
+      session_date: date,
+      period,
+      subject_name: subj
     }))
 
   if (records.length) {
-    const { error: rErr } = await supabase.from('attendance_records')
+    const { error: rErr } = await supabase
+      .from('attendance_records')
       .upsert(records, { onConflict: 'session_id,register_no' })
-    if (rErr) { showToast('Records error: ' + rErr.message, 'error'); resetBtn(); return }
+    if (rErr) {
+      showToast('Records error: ' + rErr.message, 'error')
+      resetBtn()
+      return
+    }
   }
+
+  // Update student attendance_information table
+  await updateStudentAttendance(id, date, period, subj)
 
   showToast(`Attendance saved for ${records.length} students ✅ (${date} · Period ${period} · ${subj})`, 'success')
   resetBtn()
   closeM('mAtt')
-  await openRoom(id)
+  // Reopen room to show updated sessions
+  setTimeout(() => openRoom(id), 400)
+}
+
+// ── UPDATE STUDENT ATTENDANCE SUMMARY ─────────────────────────
+async function updateStudentAttendance(classroomId, date, period, subj) {
+  try {
+    // Get all records for this session
+    const { data: allRecords } = await supabase
+      .from('attendance_records')
+      .select('register_no, status, session_date, period, subject_name')
+      .eq('classroom_id', classroomId)
+
+    if (!allRecords || !allRecords.length) return
+
+    // Group by student
+    const byStudent = {}
+    allRecords.forEach(r => {
+      if (!byStudent[r.register_no]) byStudent[r.register_no] = []
+      byStudent[r.register_no].push(r)
+    })
+
+    // Update each student's attendance_information
+    for (const [regno, records] of Object.entries(byStudent)) {
+      const totalDays   = records.length
+      const presentDays = records.filter(r => r.status === 'present').length
+      const absentDays  = records.filter(r => r.status === 'absent').length
+
+      // Build absent details list
+      const absentDetails = records
+        .filter(r => r.status === 'absent')
+        .map(r => ({
+          date:         r.session_date,
+          period:       r.period,
+          subject_name: r.subject_name
+        }))
+
+      // Build period stats — group by date
+      const statsByDate = {}
+      records.forEach(r => {
+        const d = r.session_date
+        if (!statsByDate[d]) statsByDate[d] = { date: d, present: 0, absent: 0, total: 0 }
+        statsByDate[d].total++
+        if (r.status === 'present') statsByDate[d].present++
+        else statsByDate[d].absent++
+      })
+      const periodStats = Object.values(statsByDate)
+
+      // Upsert into attendance_information
+      await supabase.from('attendance_information').upsert({
+        register_no:    regno,
+        total_days:     totalDays,
+        present_days:   presentDays,
+        absent_days:    absentDays,
+        absent_details: absentDetails,
+        period_stats:   periodStats,
+        updated_at:     new Date().toISOString()
+      }, { onConflict: 'register_no' })
+    }
+  } catch (err) {
+    console.error('updateStudentAttendance error:', err)
+  }
 }
 
 // ── VIEW SESSION ──────────────────────────────────────────────
 window.viewSess = async sessId => {
-  const { data: recs = [] } = await supabase.from('attendance_records')
-    .select('*').eq('session_id', sessId).order('student_name')
-  const { data: sess } = await supabase.from('attendance_sessions')
-    .select('*').eq('id', sessId).maybeSingle()
+  const [recsRes, sessRes] = await Promise.all([
+    supabase.from('attendance_records').select('*').eq('session_id', sessId).order('student_name'),
+    supabase.from('attendance_sessions').select('*').eq('id', sessId).maybeSingle()
+  ])
 
-  const pr = (recs || []).filter(r => r.status === 'present')
-  const ab = (recs || []).filter(r => r.status === 'absent')
+  const recs = recsRes.data || []
+  const sess = sessRes.data || null
+  const pr   = recs.filter(r => r.status === 'present')
+  const ab   = recs.filter(r => r.status === 'absent')
 
   modal(`
   <div class="tc-mo open" id="mSess">
     <div class="tc-mb tc-mb-md">
-      <div class="tc-mh"><div class="tc-mt"><i class="fas fa-eye"></i> Session Report</div>
-        <button class="tc-mc" onclick="closeM('mSess')"><i class="fas fa-times"></i></button></div>
+      <div class="tc-mh">
+        <div class="tc-mt"><i class="fas fa-eye"></i> Session Report</div>
+        <button class="tc-mc" onclick="closeM('mSess')"><i class="fas fa-times"></i></button>
+      </div>
       <div class="tc-mbd">
         <div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:16px">
-          <span class="tbd tb-amber"><i class="fas fa-calendar"></i> ${sess?.session_date || '—'}</span>
+          <span class="tbd tb-amber"><i class="fas fa-calendar"></i> ${sess ? fmtDate(sess.session_date) : '—'}</span>
           <span class="tbd tb-teal"><i class="fas fa-clock"></i> Period ${sess?.period || '—'}</span>
           <span class="tbd tb-blue"><i class="fas fa-book"></i> ${esc(sess?.subject_name || '—')}</span>
           <span class="tbd tb-green"><i class="fas fa-check"></i> ${pr.length} Present</span>
           <span class="tbd tb-red"><i class="fas fa-times"></i> ${ab.length} Absent</span>
         </div>
-        ${(recs || []).length
+        ${recs.length
           ? `<div class="tc-tbl-wrap"><table class="tc-tbl">
               <thead><tr><th>Student</th><th>Reg No</th><th>Status</th></tr></thead>
-              <tbody>${(recs || []).map(r => `<tr>
-                <td style="font-weight:700;color:#fff">${esc(r.student_name || '—')}</td>
-                <td style="font-family:monospace;color:var(--tmut)">${esc(r.register_no)}</td>
-                <td><span class="tbd ${r.status === 'present' ? 'tb-green' : 'tb-red'}">
-                  <i class="fas fa-${r.status === 'present' ? 'check' : 'times'}"></i> ${r.status}
-                </span></td>
-              </tr>`).join('')}</tbody>
+              <tbody>
+                ${recs.map(r => `<tr>
+                  <td style="font-weight:700;color:#fff">${esc(r.student_name || '—')}</td>
+                  <td style="font-family:monospace;color:var(--tmut)">${esc(r.register_no)}</td>
+                  <td><span class="tbd ${r.status === 'present' ? 'tb-green' : 'tb-red'}">
+                    <i class="fas fa-${r.status === 'present' ? 'check' : 'times'}"></i> ${r.status}
+                  </span></td>
+                </tr>`).join('')}
+              </tbody>
             </table></div>`
-          : `<div class="tc-empty"><div class="tc-empty-title">No records found.</div></div>`}
+          : `<div class="tc-empty"><div class="tc-empty-title">No records found for this session.</div></div>`}
         <div style="text-align:right;margin-top:15px">
           <button class="tb tb-ghost tb-sm" onclick="closeM('mSess')">Close</button>
         </div>
@@ -1243,7 +1388,7 @@ window.openEditRoom = id => {
   if (!room) { showToast('Classroom not found.', 'error'); return }
   _selStu.clear()
   ;(room.student_regnos || []).forEach(r => _selStu.add(r))
-  const roomId = (id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+  const roomId = safeAttr(id)
 
   modal(`
   <div class="tc-mo open" id="mEdit">
@@ -1307,15 +1452,18 @@ window.saveEditRoom = async id => {
   // Update local cache
   const idx = _rooms.findIndex(r => r.id === id)
   if (idx >= 0) {
-    _rooms[idx].class_name     = name
-    _rooms[idx].subject        = subj
-    _rooms[idx].department     = dept
-    _rooms[idx].year           = year
-    _rooms[idx].student_regnos = [..._selStu]
+    _rooms[idx] = {
+      ..._rooms[idx],
+      class_name:     name,
+      subject:        subj,
+      department:     dept,
+      year:           year,
+      student_regnos: [..._selStu]
+    }
   }
 
   showToast('Classroom updated! ✅', 'success')
   closeM('mEdit')
   refreshGrids()
-  setTimeout(() => openRoom(id), 350)
+  setTimeout(() => openRoom(id), 400)
 }
