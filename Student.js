@@ -509,14 +509,22 @@ function infoItem(ico, lbl, val) {
 async function loadAtt(regno) {
   const c = document.getElementById('attSec'); if (!c) return
 
-  // Fetch raw attendance records for this student across all classrooms
-  const { data: records, error: recErr } = await supabase
+  // Fetch raw attendance records for this student from attendance_records table
+  const { data: rawRecords } = await supabase
     .from('attendance_records')
-    .select('session_date, period, status, subject_name, classroom_id')
+    .select('session_date, period, status, subject_name')
     .ilike('register_no', regno)
-    .order('session_date', { ascending: false })
+    .order('session_date', { ascending: true })
 
-  if (recErr) {
+  // Also fetch the summarised row (for backward-compat fallback)
+  const { data: sumData } = await supabase
+    .from('attendance_information')
+    .select('*')
+    .ilike('register_no', regno)
+    .maybeSingle()
+
+  // If no data at all, show pending
+  if ((!rawRecords || rawRecords.length === 0) && (!sumData || (!sumData.total_days && !sumData.present_days))) {
     c.innerHTML = pendHTML(
       'fas fa-calendar-times','rgba(59,130,246,0.12)','#93c5fd',
       'Attendance Not Updated Yet',
@@ -525,147 +533,201 @@ async function loadAtt(regno) {
     return
   }
 
-  if (!records || records.length === 0) {
-    c.innerHTML = pendHTML(
-      'fas fa-calendar-times','rgba(59,130,246,0.12)','#93c5fd',
-      'Attendance Not Updated Yet',
-      'Your teacher hasn\'t recorded any sessions yet. Check back after classes begin.'
-    )
-    return
+  // ── COMPUTE FROM RAW RECORDS ──────────────────────────────────
+  // Group records by date
+  const byDate = {}
+  if (rawRecords && rawRecords.length > 0) {
+    rawRecords.forEach(r => {
+      const d = (r.session_date || '').split('T')[0]
+      if (!d) return
+      if (!byDate[d]) byDate[d] = { present: 0, absent: 0, total: 0, subjects: [] }
+      byDate[d].total++
+      if (r.status === 'present') byDate[d].present++
+      else byDate[d].absent++
+      if (r.subject_name) byDate[d].subjects.push(r.subject_name)
+    })
   }
 
-  // ── Step 1: Group records by date → calculate per-day stats ──
-  // Each date has multiple periods; if student is present for ALL periods → Present Day, else → Absent Day
-  const dayMap = {}
-  records.forEach(r => {
-    const d = (r.session_date || '').split('T')[0]
-    if (!d) return
-    if (!dayMap[d]) dayMap[d] = { date: d, totalPeriods: 0, presentPeriods: 0, absentPeriods: 0, subjects: [] }
-    dayMap[d].totalPeriods++
-    if (r.status === 'present') dayMap[d].presentPeriods++
-    else dayMap[d].absentPeriods++
-    if (r.subject_name) dayMap[d].subjects.push(r.subject_name)
+  const allDates = Object.keys(byDate).sort()
+
+  // ── Per-day values ──
+  // dailyPresentValue(d)  = presentPeriods(d) / totalPeriods(d)
+  // dailyAbsentValue(d)   = absentPeriods(d)  / totalPeriods(d)  = 1 - dailyPresentValue(d)
+  // dailyAttPct(d)        = dailyPresentValue(d) * 100
+  // dailyAbsPct(d)        = 100 - dailyAttPct(d)
+  const dailyStats = allDates.map(d => {
+    const { present, absent, total } = byDate[d]
+    const dailyPresentValue = total > 0 ? present / total : 0
+    const dailyAbsentValue  = total > 0 ? absent  / total : 0
+    const dailyAttPct       = dailyPresentValue * 100
+    const dailyAbsPct       = 100 - dailyAttPct
+    return { date: d, present, absent, total, dailyPresentValue, dailyAbsentValue, dailyAttPct, dailyAbsPct }
   })
 
-  const dayList = Object.values(dayMap).sort((a, b) => b.date.localeCompare(a.date))
-
-  // ── Step 2: Day classification ──
-  // Present Day = all periods attended; Absent Day = even 1 period missed
-  let presentDayCount = 0
-  let absentDayCount  = 0
-  dayList.forEach(day => {
-    if (day.presentPeriods === day.totalPeriods) {
-      presentDayCount++
-    } else {
-      absentDayCount++
-    }
+  // ── Monthly aggregation ──
+  // D  = number of working days in that month (distinct dates with records)
+  // PP = sum of dailyPresentValue across all days in month
+  // A  = sum of dailyAbsentValue  across all days in month
+  // presentPct = (PP / D) * 100
+  // absentPct  = (A  / D) * 100
+  const monthMap = {}
+  dailyStats.forEach(ds => {
+    const [year, month] = ds.date.split('-')
+    const key = `${year}-${month}`
+    if (!monthMap[key]) monthMap[key] = { year, month, days: 0, sumPresent: 0, sumAbsent: 0 }
+    monthMap[key].days++
+    monthMap[key].sumPresent += ds.dailyPresentValue
+    monthMap[key].sumAbsent  += ds.dailyAbsentValue
   })
-  const totalDayCount = dayList.length
 
-  // ── Step 3: Overall attendance % based on total periods ──
-  // Attendance % = (total present periods / total conducted periods) × 100
-  const totalConductedPeriods = records.length
-  const totalPresentPeriods   = records.filter(r => r.status === 'present').length
-  const totalAbsentPeriods    = records.filter(r => r.status === 'absent').length
+  const monthlyStats = Object.entries(monthMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, m]) => ({
+      key,
+      label: new Date(m.year + '-' + m.month + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }),
+      D: m.days,
+      PP: m.sumPresent,
+      A: m.sumAbsent,
+      presentPct: m.days > 0 ? (m.sumPresent / m.days) * 100 : 0,
+      absentPct:  m.days > 0 ? (m.sumAbsent  / m.days) * 100 : 0
+    }))
 
-  const overallPct        = totalConductedPeriods > 0
-    ? (totalPresentPeriods / totalConductedPeriods * 100).toFixed(1)
-    : '0.0'
-  const overallAbsentPct  = (100 - parseFloat(overallPct)).toFixed(1)
-  const pNum              = parseFloat(overallPct)
+  // ── Overall totals ──
+  // Total working days = total distinct dates
+  const totalDays   = allDates.length
+  // Overall present value = sum of all dailyPresentValues
+  const sumPresentVal = dailyStats.reduce((s, d) => s + d.dailyPresentValue, 0)
+  // Overall absent  value = sum of all dailyAbsentValues
+  const sumAbsentVal  = dailyStats.reduce((s, d) => s + d.dailyAbsentValue,  0)
+  // Overall percentages
+  const overallPresentPct = totalDays > 0 ? (sumPresentVal / totalDays) * 100 : 0
+  const overallAbsentPct  = totalDays > 0 ? (sumAbsentVal  / totalDays) * 100 : 0
 
-  // ── Step 4: Donut chart colour ──
-  const col = pNum >= 75 ? 'var(--sp-green)' : pNum >= 65 ? 'var(--sp-gold)' : 'var(--sp-red)'
-  const absentCol = pNum >= 75 ? 'var(--sp-muted)' : pNum >= 65 ? 'var(--sp-gold)' : 'var(--sp-red)'
-  const R = 54, circ = 2 * Math.PI * R
+  // Total periods
+  const totalPeriods   = rawRecords ? rawRecords.length : 0
+  const presentPeriods = rawRecords ? rawRecords.filter(r => r.status === 'present').length : 0
+  const absentPeriods  = totalPeriods - presentPeriods
+
+  // ── Donut chart (based on overall percentage) ──
+  const pNum = overallPresentPct
+  const col  = pNum >= 75 ? 'var(--sp-green)' : pNum >= 65 ? 'var(--sp-gold)' : 'var(--sp-red)'
+  const R    = 54
+  const circ = 2 * Math.PI * R
   const dashoff = circ * (1 - Math.min(pNum, 100) / 100)
 
-  // ── Step 5: Attendance warning ──
+  // ── Warning message ──
   let warnTxt = '', warnCls = 'saw-good'
   if (pNum >= 75) {
-    warnTxt = `✅ Good standing! Attendance meets the 75% requirement. (${totalPresentPeriods}/${totalConductedPeriods} periods)`
+    warnTxt = '✅ Good standing! Attendance meets the 75% requirement.'
   } else if (pNum >= 65) {
-    const periodsNeeded = Math.ceil((0.75 * totalConductedPeriods - totalPresentPeriods) / 0.25)
-    warnTxt = `⚠️ Low attendance! Attend <strong>${Math.max(0, periodsNeeded)}</strong> more consecutive periods to reach 75%.`
+    // How many more full-day attendances needed to reach 75%?
+    // (PP + x) / (D + x) = 0.75  =>  x = (0.75*D - PP) / 0.25
+    const need = Math.ceil((0.75 * totalDays - sumPresentVal) / 0.25)
+    warnTxt = `⚠️ Low attendance! Attend <strong>${Math.max(0, need)}</strong> more consecutive full-day classes to reach 75%.`
     warnCls = 'saw-mid'
   } else {
-    const periodsNeeded = Math.ceil((0.75 * totalConductedPeriods - totalPresentPeriods) / 0.25)
-    warnTxt = `🚨 Critical attendance! Need <strong>${Math.max(0, periodsNeeded)}</strong> more periods to reach 75%.`
+    warnTxt = '🚨 Critical attendance! Immediate improvement required.'
     warnCls = 'saw-bad'
   }
 
-  // ── Step 6: Absent day details (days where at least 1 period was missed) ──
-  const absentDays = dayList.filter(d => d.presentPeriods < d.totalPeriods)
-
-  // Chips: show absent-day entries with per-day % info
-  const absChipsHtml = absentDays.length
-    ? `<div class="st-abs-wrap">
-        <div class="st-abs-title">
-          <i class="fas fa-times-circle"></i> Days With Partial/Full Absence (${absentDays.length})
-        </div>
-        <div class="st-abs-chips">
-          ${absentDays.map(d => {
-            const rawDate = d.date
-            const dateStr = rawDate
-              ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })
-              : '—'
-            const dayPct = d.totalPeriods > 0 ? Math.round(d.presentPeriods / d.totalPeriods * 100) : 0
-            return `<span class="st-abs-chip">
-              <i class="fas fa-calendar-times"></i>
-              ${dateStr} &bull; ${d.presentPeriods}/${d.totalPeriods} periods (${dayPct}%)
-            </span>`
-          }).join('')}
-        </div>
-      </div>`
-    : ''
-
-  // ── Step 7: Last 7 days daily bar chart ──
+  // ── Last 7 days chart ──
   const todayISO   = new Date().toISOString().split('T')[0]
-  const cutoffDate = new Date(); cutoffDate.setDate(cutoffDate.getDate() - 6)
+  const cutoffDate = new Date()
+  cutoffDate.setDate(cutoffDate.getDate() - 6)
   const cutoffISO  = cutoffDate.toISOString().split('T')[0]
 
-  const last7Days = dayList.filter(d => d.date >= cutoffISO && d.date <= todayISO)
-    .sort((a, b) => a.date.localeCompare(b.date))
+  const last7 = dailyStats.filter(ds => ds.date >= cutoffISO && ds.date <= todayISO)
 
-  const dayStatsHtml = last7Days.length
-    ? `<div class="st-day-stats">
-        <div class="st-abs-title" style="margin-bottom:10px;">
-          <i class="fas fa-chart-bar"></i> Daily Attendance — Last 7 Days
-          <span style="margin-left:8px;font-size:0.68rem;opacity:0.65;font-weight:600;">(${cutoffISO} to ${todayISO})</span>
-        </div>
-        <div class="st-day-grid">
-          ${last7Days.map(d => {
-            const dayPct   = d.totalPeriods > 0 ? (d.presentPeriods / d.totalPeriods * 100).toFixed(0) : 0
-            const dayAbsPct= d.totalPeriods > 0 ? (d.absentPeriods / d.totalPeriods * 100).toFixed(0) : 0
-            const colD     = parseInt(dayPct) >= 100 ? 'var(--sp-green)' : parseInt(dayPct) >= 50 ? 'var(--sp-gold)' : 'var(--sp-red)'
-            const rawDate  = d.date
-            const dateStr  = rawDate
-              ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
-              : d.date
-            const isToday  = rawDate === todayISO
-            const isFullPresent = d.presentPeriods === d.totalPeriods
-            return `<div class="st-day-card" style="${isToday ? 'border:1px solid var(--sp-cyan);background:rgba(0,245,212,0.06);' : ''}">
-              <div class="st-day-date" style="${isToday ? 'color:var(--sp-cyan);font-weight:900;' : ''}">
-                ${dateStr}${isToday ? '<br><span style="font-size:0.55rem;color:var(--sp-cyan)">TODAY</span>' : ''}
-              </div>
-              <div class="st-day-bar-wrap">
-                <div class="st-day-bar" style="height:${dayPct}%;background:${colD}"></div>
-              </div>
-              <div class="st-day-pct" style="color:${colD}">${dayPct}%</div>
-              <div class="st-day-sub">${d.presentPeriods}/${d.totalPeriods} periods</div>
-              ${isFullPresent
-                ? `<div style="font-size:0.58rem;color:var(--sp-green);margin-top:2px;font-weight:700;">✔ Full</div>`
-                : `<div style="font-size:0.58rem;color:var(--sp-red);margin-top:2px;">Abs: ${dayAbsPct}%</div>`}
-            </div>`
-          }).join('')}
-        </div>
-      </div>`
-    : ''
+  const dayStatsHtml = last7.length ? `
+    <div class="st-day-stats">
+      <div class="st-abs-title" style="margin-bottom:10px;">
+        <i class="fas fa-chart-bar"></i> Daily Attendance — Last 7 Days
+        <span style="margin-left:8px;font-size:0.68rem;opacity:0.65;font-weight:600;">(${cutoffISO} to ${todayISO})</span>
+      </div>
+      <div class="st-day-grid">
+        ${last7.map(ds => {
+          const colD   = ds.dailyAttPct >= 75 ? 'var(--sp-green)' : ds.dailyAttPct >= 50 ? 'var(--sp-gold)' : 'var(--sp-red)'
+          const dateStr = new Date(ds.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+          const isToday = ds.date === todayISO
+          return `<div class="st-day-card" style="${isToday ? 'border:1px solid var(--sp-cyan);background:rgba(0,245,212,0.06);' : ''}">
+            <div class="st-day-date" style="${isToday ? 'color:var(--sp-cyan);font-weight:900;' : ''}">${dateStr}${isToday ? '<br><span style="font-size:0.55rem;color:var(--sp-cyan)">TODAY</span>' : ''}</div>
+            <div class="st-day-bar-wrap"><div class="st-day-bar" style="height:${ds.dailyAttPct.toFixed(0)}%;background:${colD}"></div></div>
+            <div class="st-day-pct" style="color:${colD}">${ds.dailyAttPct.toFixed(0)}%</div>
+            <div class="st-day-sub">${ds.present}/${ds.total} periods</div>
+          </div>`
+        }).join('')}
+      </div>
+    </div>` : `
+    <div class="st-day-stats">
+      <div class="st-abs-title" style="margin-bottom:10px;color:var(--sp-muted);">
+        <i class="fas fa-chart-bar"></i> Daily Attendance — Last 7 Days
+      </div>
+      <div style="padding:16px;text-align:center;color:var(--sp-muted);font-size:0.84rem;
+        background:rgba(255,255,255,0.03);border-radius:12px;border:1px dashed rgba(255,255,255,0.1);">
+        <i class="fas fa-calendar-times" style="font-size:1.5rem;display:block;margin-bottom:8px;opacity:0.4;"></i>
+        No attendance records in the last 7 days.
+      </div>
+    </div>`
 
-  // ── Step 8: Render ──
+  // ── Monthly summary table ──
+  const monthlyHtml = monthlyStats.length ? `
+    <div class="st-day-stats" style="margin-top:18px;">
+      <div class="st-abs-title" style="margin-bottom:10px;">
+        <i class="fas fa-calendar-alt"></i> Monthly Attendance Summary
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+          <thead>
+            <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+              <th style="text-align:left;padding:8px 10px;color:rgba(255,255,255,0.5);font-size:0.70rem;font-weight:800;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap;">Month</th>
+              <th style="text-align:center;padding:8px 10px;color:rgba(255,255,255,0.5);font-size:0.70rem;font-weight:800;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap;">Working Days (D)</th>
+              <th style="text-align:center;padding:8px 10px;color:#6ee7b7;font-size:0.70rem;font-weight:800;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap;">Present % (PP/D×100)</th>
+              <th style="text-align:center;padding:8px 10px;color:#fca5a5;font-size:0.70rem;font-weight:800;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap;">Absent % (A/D×100)</th>
+              <th style="text-align:center;padding:8px 10px;color:rgba(255,255,255,0.5);font-size:0.70rem;font-weight:800;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${monthlyStats.map(m => {
+              const mCol   = m.presentPct >= 75 ? '#6ee7b7' : m.presentPct >= 65 ? '#fde68a' : '#fca5a5'
+              const mIcon  = m.presentPct >= 75 ? '✅' : m.presentPct >= 65 ? '⚠️' : '🚨'
+              return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:9px 10px;color:#fff;font-weight:700;">${m.label}</td>
+                <td style="text-align:center;padding:9px 10px;color:rgba(255,255,255,0.7);">${m.D}</td>
+                <td style="text-align:center;padding:9px 10px;"><span style="color:${mCol};font-weight:800;">${m.presentPct.toFixed(1)}%</span></td>
+                <td style="text-align:center;padding:9px 10px;"><span style="color:#fca5a5;font-weight:800;">${m.absentPct.toFixed(1)}%</span></td>
+                <td style="text-align:center;padding:9px 10px;">${mIcon}</td>
+              </tr>`
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : ''
+
+  // ── Absent session chips ──
+  const absentRecords = rawRecords
+    ? rawRecords.filter(r => r.status === 'absent').slice().reverse()
+    : (sumData?.absent_details || [])
+
+  const absHtml = absentRecords.length ? `
+    <div class="st-abs-wrap">
+      <div class="st-abs-title"><i class="fas fa-times-circle"></i> All Absent Sessions (${absentRecords.length})</div>
+      <div class="st-abs-chips">
+        ${absentRecords.map(d => {
+          const rawDate = d.session_date ? d.session_date.split('T')[0] : (d.date ? d.date.split('T')[0] : null)
+          const dateStr = rawDate
+            ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })
+            : '—'
+          const subjStr = d.subject_name ? ` · ${d.subject_name}` : ''
+          return `<span class="st-abs-chip"><i class="fas fa-calendar-times"></i>${dateStr}${d.period ? ` · P${d.period}` : ''}${subjStr}</span>`
+        }).join('')}
+      </div>
+    </div>` : ''
+
   c.innerHTML = `
   <div class="sp-glass st-att-card">
     <div class="st-att-heading"><i class="fas fa-calendar-check"></i> Attendance Record</div>
+
+    <!-- Main stats row -->
     <div class="st-att-body">
       <div class="st-donut-wrap">
         <svg viewBox="0 0 124 124" class="st-donut-svg">
@@ -678,65 +740,81 @@ async function loadAtt(regno) {
                    filter:drop-shadow(0 0 7px ${col}88)"/>
         </svg>
         <div class="st-donut-center">
-          <span class="st-donut-pct" style="color:${col}">${overallPct}%</span>
-          <span class="st-donut-lbl">Attendance</span>
+          <span class="st-donut-pct" style="color:${col}">${overallPresentPct.toFixed(1)}%</span>
+          <span class="st-donut-lbl">Present</span>
         </div>
       </div>
+
       <div class="st-att-stats">
-        ${statBox(presentDayCount, 'Present Days',  'fas fa-check',       'rgba(16,185,129,0.14)', 'var(--sp-green)', 'rgba(16,185,129,0.1)')}
-        ${statBoxWithSub(
-            absentDayCount,
-            'Absent Days',
-            'fas fa-times',
-            'rgba(244,63,94,0.14)',
-            'var(--sp-red)',
-            'rgba(244,63,94,0.1)',
-            `Absent: ${overallAbsentPct}%`,
-            absentCol
-          )}
-        ${statBox(totalConductedPeriods, 'Total Periods', 'fas fa-calendar-alt', 'rgba(59,130,246,0.14)', '#93c5fd', 'rgba(59,130,246,0.1)')}
+        <!-- Present Days with % -->
+        ${attStatBox(
+          `${sumPresentVal.toFixed(2)}`,
+          `Present Days`,
+          `${overallPresentPct.toFixed(1)}%`,
+          'fas fa-check',
+          'rgba(16,185,129,0.14)',
+          'var(--sp-green)',
+          'rgba(16,185,129,0.1)'
+        )}
+        <!-- Absent Days with % -->
+        ${attStatBox(
+          `${sumAbsentVal.toFixed(2)}`,
+          `Absent Days`,
+          `${overallAbsentPct.toFixed(1)}%`,
+          'fas fa-times',
+          'rgba(244,63,94,0.14)',
+          'var(--sp-red)',
+          'rgba(244,63,94,0.1)'
+        )}
+        <!-- Total Working Days -->
+        ${attStatBox(
+          `${totalDays}`,
+          `Working Days`,
+          `${totalPeriods} periods`,
+          'fas fa-calendar-alt',
+          'rgba(59,130,246,0.14)',
+          '#93c5fd',
+          'rgba(59,130,246,0.1)'
+        )}
+        <!-- Periods breakdown -->
+        ${attStatBox(
+          `${presentPeriods}/${totalPeriods}`,
+          `Periods Present`,
+          `${totalPeriods > 0 ? ((presentPeriods/totalPeriods)*100).toFixed(1) : '0.0'}%`,
+          'fas fa-clock',
+          'rgba(139,92,246,0.14)',
+          'var(--sp-purple)',
+          'rgba(139,92,246,0.1)'
+        )}
       </div>
     </div>
 
-    <!-- Period summary row -->
-    <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-bottom:14px;margin-top:4px;">
-      <div style="display:flex;align-items:center;gap:6px;font-size:0.80rem;background:rgba(16,185,129,0.09);border:1px solid rgba(16,185,129,0.22);border-radius:50px;padding:5px 13px;color:var(--sp-green);font-weight:700;">
-        <i class="fas fa-check-circle"></i> Present Periods: ${totalPresentPeriods}
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;font-size:0.80rem;background:rgba(244,63,94,0.09);border:1px solid rgba(244,63,94,0.22);border-radius:50px;padding:5px 13px;color:var(--sp-red);font-weight:700;">
-        <i class="fas fa-times-circle"></i> Absent Periods: ${totalAbsentPeriods}
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;font-size:0.80rem;background:rgba(59,130,246,0.09);border:1px solid rgba(59,130,246,0.22);border-radius:50px;padding:5px 13px;color:#93c5fd;font-weight:700;">
-        <i class="fas fa-percent"></i> Absent %: ${overallAbsentPct}%
-      </div>
+    <!-- Attendance formula note -->
+    <div style="margin:10px 0 14px;padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid rgba(255,255,255,0.07);font-size:0.75rem;color:rgba(255,255,255,0.4);line-height:1.7;">
+      <i class="fas fa-info-circle" style="color:var(--sp-cyan);margin-right:5px;"></i>
+      <strong style="color:rgba(255,255,255,0.6);">Calculation:</strong>
+      Daily Present% = (Present Periods ÷ Total Periods) × 100 &nbsp;|&nbsp;
+      Monthly Present% = (Σ Daily Present Values ÷ Working Days) × 100 &nbsp;|&nbsp;
+      Overall = ${sumPresentVal.toFixed(2)} PP ÷ ${totalDays} days × 100 = ${overallPresentPct.toFixed(1)}%
     </div>
 
     <div class="st-att-warn ${warnCls}">${warnTxt}</div>
+
     ${dayStatsHtml}
-    ${absChipsHtml}
+    ${monthlyHtml}
+    ${absHtml}
   </div>`
 }
 
 /**
- * Stat box — plain number, no sub-line
+ * Render a single attendance stat box with a sub-label (percentage).
  */
-function statBox(n, lbl, ico, icoBg, icoCol, cardBg) {
+function attStatBox(num, lbl, sublbl, ico, icoBg, icoCol, cardBg) {
   return `<div class="sp-glass st-att-stat" style="background:${cardBg}">
     <div class="st-att-stat-ico" style="background:${icoBg};color:${icoCol}"><i class="${ico}"></i></div>
-    <span class="st-att-num" style="color:${icoCol}">${n}</span>
+    <span class="st-att-num" style="color:${icoCol};font-size:${String(num).length > 5 ? '1.2rem' : '1.78rem'}">${num}</span>
     <span class="st-att-lbl">${lbl}</span>
-  </div>`
-}
-
-/**
- * Stat box with an extra sub-label line (used for Absent Days to show absent %)
- */
-function statBoxWithSub(n, lbl, ico, icoBg, icoCol, cardBg, subTxt, subCol) {
-  return `<div class="sp-glass st-att-stat" style="background:${cardBg}">
-    <div class="st-att-stat-ico" style="background:${icoBg};color:${icoCol}"><i class="${ico}"></i></div>
-    <span class="st-att-num" style="color:${icoCol}">${n}</span>
-    <span class="st-att-lbl">${lbl}</span>
-    <span style="font-size:0.70rem;font-weight:800;color:${subCol || icoCol};margin-top:3px;opacity:0.88;">${subTxt}</span>
+    <span style="font-size:0.70rem;color:${icoCol};font-weight:800;margin-top:2px;opacity:0.9;">${sublbl}</span>
   </div>`
 }
 
@@ -988,6 +1066,8 @@ function setupRT(regno) {
   if (_rtCh) { supabase.removeChannel(_rtCh); _rtCh = null }
 
   _rtCh = supabase.channel('st-rt-' + regno)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_information' },
+      () => loadAtt(regno))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_records' },
       () => loadAtt(regno))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'exam_information' },
