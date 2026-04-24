@@ -305,6 +305,7 @@ async function fetchRoom(id) {
   if (!id) return null
   const { data, error } = await supabase.from('classrooms').select('*').eq('id', id).maybeSingle()
   if (error || !data) return null
+  // Keep local cache in sync
   const idx = _rooms.findIndex(r => r.id === id)
   if (idx >= 0) _rooms[idx] = data
   else _rooms.unshift(data)
@@ -629,61 +630,6 @@ async function renderProfile(t) {
     .tc-prof-dept-new{font-size:.88rem;color:var(--tc-muted);margin-bottom:16px;}
     .tc-prof-badges-center{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;}
     .tc-prof-btns-center{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;}
-
-    /* ── EXAM MANAGER STYLES ── */
-    .tc-exam-mgr-wrap{margin-top:30px;}
-    .tc-exam-mgr-hdr{font-family:'Syne',sans-serif;font-size:1.42rem;color:#fff;
-      margin-bottom:22px;display:flex;align-items:center;gap:12px;
-      padding-bottom:16px;border-bottom:1px solid var(--tc-border);}
-    .tc-exam-mgr-hdr i{color:var(--tc-amber);}
-    .tc-exam-search-row{display:flex;gap:10px;align-items:flex-end;margin-bottom:22px;flex-wrap:wrap;}
-    .tc-exam-search-row .tg-fg{flex:1;min-width:200px;margin-bottom:0;}
-    .tc-exam-result-card{padding:22px 24px;margin-bottom:16px;}
-    .tc-exam-stu-info{display:flex;align-items:center;gap:14px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--tc-border);}
-    .tc-exam-stu-avatar{width:52px;height:52px;border-radius:50%;
-      background:linear-gradient(135deg,var(--tc-amber),var(--tc-amber2));
-      display:flex;align-items:center;justify-content:center;
-      font-family:'Syne',sans-serif;font-size:1.35rem;font-weight:800;color:var(--tc-void);
-      flex-shrink:0;}
-    .tc-exam-stu-name{font-family:'Syne',sans-serif;font-size:1.05rem;font-weight:700;color:#fff;margin-bottom:4px;}
-    .tc-exam-stu-meta{font-size:.80rem;color:var(--tc-muted);}
-    .tc-exam-sem-tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:18px;}
-    .tc-exam-sem-tab{padding:7px 16px;border-radius:50px;font-size:.80rem;font-weight:800;
-      background:var(--tc-glass);border:1.5px solid var(--tc-border);color:var(--tc-muted);
-      cursor:pointer;font-family:'Mulish',sans-serif;
-      transition:all .3s cubic-bezier(.34,1.56,.64,1);}
-    .tc-exam-sem-tab:hover{border-color:var(--tc-amber);color:var(--tc-amber);}
-    .tc-exam-sem-tab.act{background:rgba(245,158,11,.15);border-color:var(--tc-amber);
-      color:var(--tc-amber);box-shadow:0 4px 14px rgba(245,158,11,.18);}
-    .tc-exam-sem-panel{display:none;}
-    .tc-exam-sem-panel.act{display:block;}
-    .tc-exam-type-block{margin-bottom:18px;border:1px solid var(--tc-border);border-radius:var(--tc-r);overflow:hidden;}
-    .tc-exam-type-hdr{display:flex;align-items:center;justify-content:space-between;
-      padding:12px 16px;background:rgba(255,255,255,.03);border-bottom:1px solid var(--tc-border);}
-    .tc-exam-type-title{font-size:.92rem;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px;}
-    .tc-exam-subj-row{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:8px;
-      padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.04);align-items:center;}
-    .tc-exam-subj-row:last-child{border-bottom:none;}
-    .tc-exam-subj-row:hover{background:rgba(255,255,255,.025);}
-    .tc-exam-subj-name{font-size:.86rem;font-weight:700;color:#fff;}
-    .tc-exam-subj-code{font-size:.74rem;font-family:'JetBrains Mono',monospace;
-      color:#93c5fd;background:rgba(59,130,246,.10);padding:2px 8px;border-radius:6px;}
-    .tc-exam-subj-marks{font-size:.90rem;font-weight:800;}
-    .tc-exam-add-subj-row{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;
-      gap:8px;padding:10px 14px;background:rgba(245,158,11,.04);align-items:end;}
-    .tc-exam-add-subj-row input{margin-bottom:0;}
-    .tc-exam-empty-type{padding:16px;text-align:center;color:var(--tc-muted);font-size:.84rem;}
-    .tc-exam-total-row{padding:10px 16px;display:flex;align-items:center;justify-content:flex-end;
-      gap:18px;border-top:1px solid var(--tc-border);background:rgba(255,255,255,.03);}
-    .tc-exam-total-label{font-size:.78rem;font-weight:800;color:var(--tc-muted);text-transform:uppercase;letter-spacing:.06em;}
-    .tc-exam-total-val{font-family:'JetBrains Mono',monospace;font-size:1rem;font-weight:800;color:var(--tc-amber);}
-    .tc-exam-del-subj{width:28px;height:28px;border-radius:8px;background:rgba(248,113,113,.10);
-      border:1px solid rgba(248,113,113,.25);color:var(--tc-red);cursor:pointer;
-      display:flex;align-items:center;justify-content:center;font-size:.80rem;
-      transition:all .25s ease;flex-shrink:0;}
-    .tc-exam-del-subj:hover{background:rgba(248,113,113,.22);transform:scale(1.10);}
-    .tc-exam-no-data{text-align:center;padding:32px 20px;color:var(--tc-muted);}
-    .tc-exam-no-data i{font-size:2.5rem;opacity:.3;display:block;margin-bottom:12px;color:var(--tc-amber);}
   </style>`
 
   setTimeout(initFU, 80)
@@ -698,403 +644,6 @@ function tci(ico, cls, lbl, val) {
   </div></div>`
 }
 
-// ════════════════════════════════════════════════════════════════
-// EXAM MANAGER
-// ════════════════════════════════════════════════════════════════
-
-// In-memory exam state for the currently loaded student
-let _examRegno  = ''       // student register no being edited
-let _examData   = {}       // { sem1: { ciat1: [...], ciat2: [...], final: [...] }, ... }
-let _examStuInfo = null    // student info object
-
-const SEM_LABELS = {
-  sem1:'Sem 1', sem2:'Sem 2', sem3:'Sem 3', sem4:'Sem 4',
-  sem5:'Sem 5', sem6:'Sem 6', sem7:'Sem 7', sem8:'Sem 8'
-}
-const TYPE_LABELS = {
-  ciat1: { label:'CIAT – I',          ico:'fas fa-pencil-alt',     col:'#3b82f6' },
-  ciat2: { label:'CIAT – II',         ico:'fas fa-pen-nib',        col:'#8b5cf6' },
-  final: { label:'Final Examination', ico:'fas fa-graduation-cap', col:'#f43f5e' }
-}
-
-function renderExamMgr() {
-  const c = document.getElementById('examMgr'); if (!c) return
-  c.innerHTML = `
-  <div class="tc-exam-mgr-wrap">
-    <div class="tc-exam-mgr-hdr"><i class="fas fa-file-alt"></i> Student Exam Details</div>
-    <div class="tg" style="padding:20px 22px;margin-bottom:16px;">
-      <p style="font-size:.88rem;color:var(--tc-muted);margin-bottom:16px;line-height:1.65;">
-        <i class="fas fa-info-circle" style="color:var(--tc-blue);margin-right:6px;"></i>
-        Enter a student's register number to create or update their exam records (CIAT-I, CIAT-II, Final) for any semester.
-      </p>
-      <div class="tc-exam-search-row">
-        <div class="tg-fg">
-          <label class="tl"><i class="fas fa-id-card"></i> Student Register Number</label>
-          <input id="examStuRegno" class="ti" placeholder="e.g. 22CS0001" autocomplete="off"
-            style="text-transform:uppercase;" />
-        </div>
-        <button class="tb tb-pri" id="examLoadBtn" onclick="tcLoadStudentExam()">
-          <i class="fas fa-search"></i> Load / Create
-        </button>
-      </div>
-      <div id="examMsg" style="display:none;font-size:.84rem;padding:10px 14px;border-radius:10px;margin-top:10px;"></div>
-    </div>
-    <div id="examEditorWrap" style="display:none;"></div>
-  </div>`
-}
-
-window.tcLoadStudentExam = async () => {
-  const rawRegno = document.getElementById('examStuRegno')?.value?.trim().toUpperCase()
-  if (!rawRegno) { showToast('Please enter a register number.', 'warning'); return }
-
-  const btn = document.getElementById('examLoadBtn')
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading…' }
-  _setExamMsg('', '')
-
-  const [stuRes, examRes] = await Promise.all([
-    supabase.from('student_information').select('register_no,name,department,year').ilike('register_no', rawRegno).maybeSingle(),
-    supabase.from('exam_information').select('*').ilike('register_no', rawRegno).maybeSingle()
-  ])
-
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-search"></i> Load / Create' }
-
-  if (!stuRes.data) {
-    _setExamMsg(`⚠️ Student with register number <strong>${esc(rawRegno)}</strong> not found in the system.`, 'warn')
-    document.getElementById('examEditorWrap').style.display = 'none'
-    return
-  }
-
-  _examStuInfo = stuRes.data
-  _examRegno   = stuRes.data.register_no
-
-  // Load existing exam_data or start fresh
-  if (examRes.data && examRes.data.exam_data) {
-    _examData = JSON.parse(JSON.stringify(examRes.data.exam_data))
-  } else {
-    _examData = {}
-  }
-
-  // Ensure all sems exist
-  for (let i = 1; i <= 8; i++) {
-    const k = 'sem' + i
-    if (!_examData[k]) _examData[k] = { ciat1: [], ciat2: [], final: [] }
-    ;['ciat1','ciat2','final'].forEach(t => { if (!Array.isArray(_examData[k][t])) _examData[k][t] = [] })
-  }
-
-  const isNew = !examRes.data
-  _setExamMsg(
-    isNew
-      ? `✅ No existing exam record found for <strong>${esc(_examStuInfo.name || _examRegno)}</strong>. You can create a new one below.`
-      : `✅ Loaded exam data for <strong>${esc(_examStuInfo.name || _examRegno)}</strong>. Edit and save below.`,
-    isNew ? 'ok-new' : 'ok'
-  )
-
-  renderExamEditor()
-}
-
-function _setExamMsg(html, type) {
-  const el = document.getElementById('examMsg')
-  if (!el) return
-  if (!html) { el.style.display = 'none'; return }
-  const styles = {
-    warn:   'background:rgba(245,158,11,.10);border:1px solid rgba(245,158,11,.28);color:#fde68a;',
-    ok:     'background:rgba(52,211,153,.10);border:1px solid rgba(52,211,153,.26);color:#6ee7b7;',
-    'ok-new':'background:rgba(59,130,246,.10);border:1px solid rgba(59,130,246,.26);color:#93c5fd;',
-    err:    'background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.26);color:#fca5a5;'
-  }
-  el.style.cssText = (styles[type] || styles.ok) + 'display:block;'
-  el.innerHTML = html
-}
-
-function renderExamEditor() {
-  const wrap = document.getElementById('examEditorWrap')
-  if (!wrap || !_examStuInfo) return
-  wrap.style.display = 'block'
-
-  const stu = _examStuInfo
-  const initials = (stu.name || stu.register_no).split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase()
-
-  // Build semester tabs — only show sems that have data OR all 8
-  const semKeys = Object.keys(SEM_LABELS)
-
-  wrap.innerHTML = `
-  <div class="tg tc-exam-result-card">
-    <!-- Student info header -->
-    <div class="tc-exam-stu-info">
-      <div class="tc-exam-stu-avatar">${initials}</div>
-      <div>
-        <div class="tc-exam-stu-name">${esc(stu.name || stu.register_no)}</div>
-        <div class="tc-exam-stu-meta">
-          <span style="margin-right:10px;"><i class="fas fa-id-card"></i> ${esc(_examRegno)}</span>
-          ${stu.department ? `<span style="margin-right:10px;"><i class="fas fa-building"></i> ${esc(stu.department)}</span>` : ''}
-          ${stu.year ? `<span><i class="fas fa-layer-group"></i> Year ${stu.year}</span>` : ''}
-        </div>
-      </div>
-      <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="tb tb-pri tb-sm" id="examSaveAllBtn" onclick="tcSaveExamData()">
-          <i class="fas fa-save"></i> Save All Changes
-        </button>
-      </div>
-    </div>
-
-    <!-- Semester tabs -->
-    <div class="tc-exam-sem-tabs" id="examSemTabs">
-      ${semKeys.map((sk, i) => `
-        <button class="tc-exam-sem-tab${i === 0 ? ' act' : ''}"
-                data-sem="${sk}" onclick="tcExamSwitchSem('${sk}')">
-          ${SEM_LABELS[sk]}
-        </button>`).join('')}
-    </div>
-
-    <!-- Semester panels -->
-    <div id="examSemPanels">
-      ${semKeys.map((sk, i) => `
-        <div id="examPanel_${sk}" class="tc-exam-sem-panel${i === 0 ? ' act' : ''}">
-          ${renderExamSemPanel(sk)}
-        </div>`).join('')}
-    </div>
-
-    <!-- Bottom save button -->
-    <div style="display:flex;justify-content:flex-end;margin-top:18px;padding-top:15px;border-top:1px solid var(--tc-border);">
-      <button class="tb tb-pri" onclick="tcSaveExamData()">
-        <i class="fas fa-save"></i> Save All Changes
-      </button>
-    </div>
-  </div>`
-}
-
-function renderExamSemPanel(semKey) {
-  const semData = _examData[semKey] || { ciat1: [], ciat2: [], final: [] }
-  let html = ''
-
-  Object.keys(TYPE_LABELS).forEach(typeKey => {
-    const cfg     = TYPE_LABELS[typeKey]
-    const subjects = semData[typeKey] || []
-    const total    = subjects.reduce((s, r) => s + (parseFloat(r.marks) || 0), 0)
-    const maxTotal = subjects.reduce((s, r) => s + (parseFloat(r.max) || 0), 0)
-
-    const subjRows = subjects.length > 0
-      ? subjects.map((subj, idx) => {
-          const pct = subj.max > 0 ? ((subj.marks / subj.max) * 100).toFixed(1) : '—'
-          const passThreshold = typeKey === 'final' ? 50 : 40
-          const pass = subj.max > 0 && (subj.marks / subj.max * 100) >= passThreshold
-          const markCol = pass ? 'var(--tc-green)' : 'var(--tc-red)'
-          return `
-          <div class="tc-exam-subj-row" data-sem="${semKey}" data-type="${typeKey}" data-idx="${idx}">
-            <div>
-              <div class="tc-exam-subj-name">${esc(subj.subject_name || subj.subject || '—')}</div>
-              ${subj.subject_code ? `<div class="tc-exam-subj-code">${esc(subj.subject_code)}</div>` : ''}
-            </div>
-            <div style="font-size:.80rem;color:var(--tc-muted);">
-              ${esc(subj.subject_code || '—')}
-            </div>
-            <div class="tc-exam-subj-marks" style="color:${markCol}">
-              ${subj.marks !== undefined && subj.marks !== null ? subj.marks : '—'}
-              <span style="font-size:.72rem;font-weight:600;color:var(--tc-muted);">/ ${subj.max || 100}</span>
-            </div>
-            <div style="font-size:.78rem;color:${markCol};font-weight:800;">${pct}%</div>
-            <button class="tc-exam-del-subj"
-              onclick="tcDeleteSubject('${semKey}','${typeKey}',${idx})"
-              title="Remove subject">
-              <i class="fas fa-times"></i>
-            </button>
-          </div>`
-        }).join('')
-      : `<div class="tc-exam-empty-type">
-          <i class="fas fa-inbox" style="font-size:1.4rem;opacity:.35;display:block;margin-bottom:7px;color:${cfg.col};"></i>
-          No subjects added yet. Use the form below to add subjects.
-        </div>`
-
-    const totalHtml = subjects.length > 0 ? `
-      <div class="tc-exam-total-row">
-        <span class="tc-exam-total-label">Total:</span>
-        <span class="tc-exam-total-val">${total.toFixed(1)} / ${maxTotal.toFixed(0)}</span>
-        <span style="font-size:.80rem;color:${maxTotal > 0 && (total/maxTotal*100)>=50?'var(--tc-green)':'var(--tc-red)'};font-weight:800;margin-left:6px;">
-          ${maxTotal > 0 ? (total/maxTotal*100).toFixed(1) + '%' : ''}
-        </span>
-      </div>` : ''
-
-    html += `
-    <div class="tc-exam-type-block" style="border-top:3px solid ${cfg.col};">
-      <div class="tc-exam-type-hdr">
-        <div class="tc-exam-type-title">
-          <i class="${cfg.ico}" style="color:${cfg.col};"></i> ${cfg.label}
-          <span style="font-size:.74rem;font-weight:600;opacity:.6;margin-left:6px;">(${subjects.length} subject${subjects.length !== 1 ? 's' : ''})</span>
-        </div>
-        <button class="tb tb-ghost tb-sm" style="font-size:.76rem;padding:5px 12px;"
-          onclick="tcToggleAddSubjForm('${semKey}','${typeKey}')">
-          <i class="fas fa-plus"></i> Add Subject
-        </button>
-      </div>
-
-      <!-- Subject rows -->
-      <div id="subjList_${semKey}_${typeKey}">
-        ${subjRows}
-      </div>
-      ${totalHtml}
-
-      <!-- Add subject form (hidden by default) -->
-      <div id="addSubjForm_${semKey}_${typeKey}" style="display:none;border-top:1px solid var(--tc-border);">
-        <div style="padding:12px 14px 4px;font-size:.76rem;font-weight:800;color:${cfg.col};
-          text-transform:uppercase;letter-spacing:.06em;">
-          <i class="fas fa-plus-circle"></i> Add New Subject to ${cfg.label}
-        </div>
-        <div class="tc-exam-add-subj-row">
-          <div>
-            <label style="font-size:.70rem;font-weight:800;color:var(--tc-muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px;">Subject Name *</label>
-            <input id="newSubjName_${semKey}_${typeKey}" class="ti"
-              placeholder="e.g. Data Structures" style="font-size:.84rem;" />
-          </div>
-          <div>
-            <label style="font-size:.70rem;font-weight:800;color:var(--tc-muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px;">Subject Code</label>
-            <input id="newSubjCode_${semKey}_${typeKey}" class="ti"
-              placeholder="e.g. CS3301" style="font-size:.84rem;" />
-          </div>
-          <div>
-            <label style="font-size:.70rem;font-weight:800;color:var(--tc-muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px;">Marks Obtained *</label>
-            <input id="newSubjMarks_${semKey}_${typeKey}" class="ti" type="number"
-              placeholder="e.g. 85" min="0" max="200" step="0.5" style="font-size:.84rem;" />
-          </div>
-          <div>
-            <label style="font-size:.70rem;font-weight:800;color:var(--tc-muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px;">Max Marks *</label>
-            <input id="newSubjMax_${semKey}_${typeKey}" class="ti" type="number"
-              placeholder="100" min="1" max="200" step="0.5" value="100" style="font-size:.84rem;" />
-          </div>
-          <div style="display:flex;gap:6px;align-items:flex-end;padding-bottom:2px;">
-            <button class="tb tb-pri tb-sm" style="white-space:nowrap;"
-              onclick="tcAddSubject('${semKey}','${typeKey}')">
-              <i class="fas fa-plus"></i> Add
-            </button>
-            <button class="tb tb-ghost tb-sm"
-              onclick="tcToggleAddSubjForm('${semKey}','${typeKey}')">
-              <i class="fas fa-times"></i>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>`
-  })
-
-  return html
-}
-
-window.tcExamSwitchSem = (semKey) => {
-  document.querySelectorAll('.tc-exam-sem-tab').forEach(t => {
-    t.classList.toggle('act', t.dataset.sem === semKey)
-  })
-  document.querySelectorAll('.tc-exam-sem-panel').forEach(p => {
-    p.classList.toggle('act', p.id === 'examPanel_' + semKey)
-  })
-}
-
-window.tcToggleAddSubjForm = (semKey, typeKey) => {
-  const el = document.getElementById(`addSubjForm_${semKey}_${typeKey}`)
-  if (!el) return
-  const isVisible = el.style.display !== 'none'
-  el.style.display = isVisible ? 'none' : 'block'
-  if (!isVisible) {
-    // Focus first input when opening
-    setTimeout(() => document.getElementById(`newSubjName_${semKey}_${typeKey}`)?.focus(), 80)
-  }
-}
-
-window.tcAddSubject = (semKey, typeKey) => {
-  const nameEl  = document.getElementById(`newSubjName_${semKey}_${typeKey}`)
-  const codeEl  = document.getElementById(`newSubjCode_${semKey}_${typeKey}`)
-  const marksEl = document.getElementById(`newSubjMarks_${semKey}_${typeKey}`)
-  const maxEl   = document.getElementById(`newSubjMax_${semKey}_${typeKey}`)
-
-  const name  = nameEl?.value?.trim()
-  const code  = codeEl?.value?.trim() || ''
-  const marks = parseFloat(marksEl?.value)
-  const max   = parseFloat(maxEl?.value) || 100
-
-  if (!name) { showToast('Subject name is required.', 'warning'); nameEl?.focus(); return }
-  if (isNaN(marks) || marks < 0) { showToast('Please enter valid marks obtained.', 'warning'); marksEl?.focus(); return }
-  if (marks > max) { showToast(`Marks obtained (${marks}) cannot exceed max marks (${max}).`, 'warning'); marksEl?.focus(); return }
-
-  if (!_examData[semKey]) _examData[semKey] = { ciat1: [], ciat2: [], final: [] }
-  if (!Array.isArray(_examData[semKey][typeKey])) _examData[semKey][typeKey] = []
-
-  _examData[semKey][typeKey].push({
-    subject_name: name,
-    subject:      name,
-    subject_code: code,
-    marks:        marks,
-    max:          max
-  })
-
-  // Clear form fields
-  if (nameEl)  nameEl.value  = ''
-  if (codeEl)  codeEl.value  = ''
-  if (marksEl) marksEl.value = ''
-  if (maxEl)   maxEl.value   = '100'
-
-  // Re-render this sem panel only
-  const panel = document.getElementById(`examPanel_${semKey}`)
-  if (panel) panel.innerHTML = renderExamSemPanel(semKey)
-
-  showToast(`Subject "${name}" added to ${SEM_LABELS[semKey]} — ${TYPE_LABELS[typeKey].label}.`, 'success')
-}
-
-window.tcDeleteSubject = (semKey, typeKey, idx) => {
-  if (!_examData[semKey]?.[typeKey]) return
-  const subj = _examData[semKey][typeKey][idx]
-  if (!confirm(`Remove "${subj?.subject_name || subj?.subject || 'this subject'}" from ${SEM_LABELS[semKey]} — ${TYPE_LABELS[typeKey].label}?`)) return
-
-  _examData[semKey][typeKey].splice(idx, 1)
-
-  // Re-render panel
-  const panel = document.getElementById(`examPanel_${semKey}`)
-  if (panel) panel.innerHTML = renderExamSemPanel(semKey)
-
-  showToast('Subject removed.', 'info')
-}
-
-window.tcSaveExamData = async () => {
-  if (!_examRegno) { showToast('No student loaded. Please search for a student first.', 'warning'); return }
-
-  const btn = document.getElementById('examSaveAllBtn')
-  const allSaveBtns = document.querySelectorAll('[onclick="tcSaveExamData()"]')
-  allSaveBtns.forEach(b => { b.disabled = true; b.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…' })
-
-  // Clean exam_data: remove empty arrays to keep it tidy, but keep structure
-  const cleanData = {}
-  let hasAnySubject = false
-  for (let i = 1; i <= 8; i++) {
-    const sk = 'sem' + i
-    const semData = _examData[sk] || {}
-    cleanData[sk] = {}
-    ;['ciat1','ciat2','final'].forEach(t => {
-      cleanData[sk][t] = Array.isArray(semData[t]) ? semData[t] : []
-      if (cleanData[sk][t].length > 0) hasAnySubject = true
-    })
-  }
-
-  const payload = {
-    register_no: _examRegno,
-    exam_data:   cleanData,
-    updated_at:  new Date().toISOString()
-  }
-
-  const { error } = await supabase.from('exam_information')
-    .upsert(payload, { onConflict: 'register_no' })
-
-  allSaveBtns.forEach(b => { b.disabled = false; b.innerHTML = '<i class="fas fa-save"></i> Save All Changes' })
-
-  if (error) {
-    showToast('Failed to save exam data: ' + error.message, 'error')
-    return
-  }
-
-  showToast(`Exam data for ${esc(_examStuInfo?.name || _examRegno)} saved successfully! ✅`, 'success')
-  _setExamMsg(`✅ Exam data saved successfully for <strong>${esc(_examStuInfo?.name || _examRegno)}</strong> (${new Date().toLocaleString('en-IN')}).`, 'ok')
-}
-
-// ════════════════════════════════════════════════════════════════
-// END EXAM MANAGER
-// ════════════════════════════════════════════════════════════════
-
 // ── ROOMS REALTIME ────────────────────────────────────────────
 function setupRoomsRealtime() {
   if (_roomsRtCh) { supabase.removeChannel(_roomsRtCh); _roomsRtCh = null }
@@ -1105,6 +654,374 @@ function setupRoomsRealtime() {
     })
     .subscribe()
 }
+
+// ══════════════════════════════════════════════════════════════
+// ── EXAM MANAGEMENT ──────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+// State for exam editor
+let _examRegno    = ''
+let _examData     = {}  // { sem1: { ciat1: [...], ciat2: [...], final: [...] }, ... }
+let _activeSem    = 'sem1'
+let _activeExType = 'ciat1'
+
+function renderExamMgr() {
+  const c = document.getElementById('examMgr'); if (!c) return
+  c.innerHTML = `
+  <div style="margin-top:30px;margin-bottom:8px">
+    <div class="tc-att-hdr"><i class="fas fa-file-alt"></i> Student Exam Management</div>
+    <div class="tg" style="padding:26px 24px;">
+      <p style="font-size:.88rem;color:var(--tc-muted);margin-bottom:18px;line-height:1.7;">
+        <i class="fas fa-info-circle" style="color:var(--tc-blue)"></i>
+        Enter a student's Register Number to create or edit their exam details. Data is saved to the <strong style="color:var(--tc-amber)">exam_information</strong> table.
+      </p>
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px;">
+        <div style="flex:1;min-width:200px;">
+          <label class="tl" style="margin-bottom:7px;"><i class="fas fa-id-badge"></i> Student Register Number</label>
+          <input id="examRegnoInput" class="ti" placeholder="e.g. 22CS0001" style="text-transform:uppercase;" />
+        </div>
+        <button class="tb tb-pri" id="loadExamBtn" onclick="loadStudentExam()">
+          <i class="fas fa-search"></i> Load / Create
+        </button>
+      </div>
+      <div id="examEditorArea" style="display:none;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap;">
+          <span id="examStudentBadge" class="tbd tb-amber" style="font-size:.86rem;padding:6px 16px;"></span>
+          <span class="tbd tb-blue" id="examModeBadge" style="font-size:.80rem;padding:5px 13px;"></span>
+        </div>
+
+        <!-- Semester Tabs -->
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px;" id="examSemTabs">
+          ${[1,2,3,4,5,6,7,8].map(n => `
+            <button class="tc-tab${n===1?' act':''}" data-exsem="sem${n}" onclick="switchExamSem('sem${n}',this)">
+              Sem ${n}
+            </button>`).join('')}
+        </div>
+
+        <!-- Exam Type Tabs -->
+        <div class="tc-tabs" style="margin-bottom:20px;" id="examTypeTabs">
+          <button class="tc-tab act" data-extype="ciat1" onclick="switchExamType('ciat1',this)"><i class="fas fa-pencil-alt"></i> CIAT – I</button>
+          <button class="tc-tab" data-extype="ciat2" onclick="switchExamType('ciat2',this)"><i class="fas fa-pen-nib"></i> CIAT – II</button>
+          <button class="tc-tab" data-extype="final" onclick="switchExamType('final',this)"><i class="fas fa-graduation-cap"></i> Final Exam</button>
+        </div>
+
+        <!-- Subjects Table -->
+        <div id="examSubjectsArea"></div>
+
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--tc-border);">
+          <button class="tb tb-ghost tb-sm" onclick="addExamSubjectRow()"><i class="fas fa-plus"></i> Add Subject</button>
+          <button class="tb tb-pri" id="saveExamBtn" onclick="saveExamData()"><i class="fas fa-save"></i> Save Exam Data</button>
+        </div>
+      </div>
+      <div id="examLoadMsg" style="display:none;"></div>
+    </div>
+  </div>
+
+  <style>
+    .exam-subj-row {
+      display:grid;
+      grid-template-columns: 2fr 1fr 80px 80px 80px 36px;
+      gap:8px; align-items:center;
+      padding:8px 10px; margin-bottom:6px;
+      background:rgba(255,255,255,0.03);
+      border:1px solid var(--tc-border);
+      border-radius:10px;
+      transition:background .2s;
+    }
+    .exam-subj-row:hover { background:rgba(255,255,255,0.06); }
+    .exam-subj-row input { width:100%; }
+    .exam-subj-hdr {
+      display:grid;
+      grid-template-columns: 2fr 1fr 80px 80px 80px 36px;
+      gap:8px; padding:6px 10px;
+      font-size:.70rem; font-weight:800;
+      text-transform:uppercase; letter-spacing:.06em;
+      color:var(--tc-muted); margin-bottom:4px;
+    }
+    @media(max-width:600px){
+      .exam-subj-row,.exam-subj-hdr{grid-template-columns:1fr 1fr;gap:6px;}
+      .exam-subj-row input:last-of-type{grid-column:1/-1;}
+    }
+    .exam-rm-btn {
+      width:30px;height:30px;border-radius:8px;
+      background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.28);
+      color:var(--tc-red);cursor:pointer;font-size:.8rem;
+      display:flex;align-items:center;justify-content:center;
+      transition:all .25s;flex-shrink:0;
+    }
+    .exam-rm-btn:hover{background:rgba(248,113,113,.22);transform:scale(1.1);}
+  </style>`
+}
+
+window.loadStudentExam = async () => {
+  const raw = document.getElementById('examRegnoInput')?.value?.trim().toUpperCase()
+  if (!raw) { showToast('Enter a Register Number.', 'warning'); return }
+
+  _examRegno = raw
+  _examData  = {}
+  _activeSem    = 'sem1'
+  _activeExType = 'ciat1'
+
+  const btn = document.getElementById('loadExamBtn')
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading…' }
+
+  const msgEl = document.getElementById('examLoadMsg')
+  if (msgEl) { msgEl.style.display = 'none'; msgEl.innerHTML = '' }
+
+  // Check student exists
+  const { data: stuData } = await supabase.from('student_information')
+    .select('register_no,name,department,year').ilike('register_no', raw).maybeSingle()
+
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-search"></i> Load / Create' }
+
+  if (!stuData) {
+    if (msgEl) {
+      msgEl.style.display = 'flex'
+      msgEl.className = 'tc-msg tc-msg-err'
+      msgEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> Student not found with this Register Number.'
+    }
+    return
+  }
+
+  // Load existing exam data
+  const { data: examRow } = await supabase.from('exam_information')
+    .select('*').ilike('register_no', raw).maybeSingle()
+
+  const isNew = !examRow
+  if (examRow && examRow.exam_data) {
+    _examData = JSON.parse(JSON.stringify(examRow.exam_data))
+  }
+
+  // Show editor
+  const editorEl = document.getElementById('examEditorArea')
+  if (editorEl) editorEl.style.display = 'block'
+
+  const studentBadge = document.getElementById('examStudentBadge')
+  if (studentBadge) {
+    studentBadge.innerHTML = `<i class="fas fa-user-graduate"></i> ${esc(stuData.name || raw)} · ${esc(raw)}`
+  }
+
+  const modeBadge = document.getElementById('examModeBadge')
+  if (modeBadge) {
+    modeBadge.innerHTML = isNew
+      ? '<i class="fas fa-plus-circle"></i> New Record'
+      : '<i class="fas fa-edit"></i> Editing Existing'
+    modeBadge.className = `tbd ${isNew ? 'tb-green' : 'tb-amber'}`
+  }
+
+  if (msgEl) { msgEl.style.display = 'none' }
+
+  // Reset tabs
+  document.querySelectorAll('#examSemTabs .tc-tab').forEach(t => t.classList.remove('act'))
+  document.querySelector('#examSemTabs [data-exsem="sem1"]')?.classList.add('act')
+  document.querySelectorAll('#examTypeTabs .tc-tab').forEach(t => t.classList.remove('act'))
+  document.querySelector('#examTypeTabs [data-extype="ciat1"]')?.classList.add('act')
+  _activeSem = 'sem1'; _activeExType = 'ciat1'
+
+  renderExamSubjectsTable()
+  showToast(isNew ? `Creating new exam record for ${raw}` : `Loaded exam data for ${raw}`, isNew ? 'info' : 'success')
+}
+
+window.switchExamSem = (sem, btn) => {
+  // Save current before switching
+  _collectCurrentSubjects()
+  _activeSem = sem
+  document.querySelectorAll('#examSemTabs .tc-tab').forEach(t => t.classList.remove('act'))
+  btn.classList.add('act')
+  renderExamSubjectsTable()
+}
+
+window.switchExamType = (typ, btn) => {
+  _collectCurrentSubjects()
+  _activeExType = typ
+  document.querySelectorAll('#examTypeTabs .tc-tab').forEach(t => t.classList.remove('act'))
+  btn.classList.add('act')
+  renderExamSubjectsTable()
+}
+
+function _getSubjects() {
+  if (!_examData[_activeSem]) _examData[_activeSem] = {}
+  if (!_examData[_activeSem][_activeExType]) _examData[_activeSem][_activeExType] = []
+  return _examData[_activeSem][_activeExType]
+}
+
+function _collectCurrentSubjects() {
+  const rows = document.querySelectorAll('.exam-subj-row[data-idx]')
+  if (!rows.length) return
+  if (!_examData[_activeSem]) _examData[_activeSem] = {}
+  const collected = []
+  rows.forEach(row => {
+    const subjectName = row.querySelector('.ex-subj-name')?.value?.trim() || ''
+    const subjectCode = row.querySelector('.ex-subj-code')?.value?.trim() || ''
+    const maxMark     = row.querySelector('.ex-subj-max')?.value?.trim() || ''
+    const marks       = row.querySelector('.ex-subj-marks')?.value?.trim() || ''
+    if (subjectName || subjectCode) {
+      collected.push({
+        subject:      subjectName,
+        subject_name: subjectName,
+        code:         subjectCode,
+        subject_code: subjectCode,
+        max:          maxMark !== '' ? parseFloat(maxMark) : 100,
+        marks:        marks !== ''   ? parseFloat(marks)   : 0
+      })
+    }
+  })
+  _examData[_activeSem][_activeExType] = collected
+}
+
+function renderExamSubjectsTable() {
+  const area = document.getElementById('examSubjectsArea'); if (!area) return
+  const subjects = _getSubjects()
+
+  const typeLabelMap = { ciat1: 'CIAT – I', ciat2: 'CIAT – II', final: 'Final Examination' }
+  const semNum = parseInt(_activeSem.replace('sem',''))
+
+  area.innerHTML = `
+    <div style="font-size:.85rem;font-weight:800;color:var(--tc-amber);margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+      <i class="fas fa-layer-group"></i> Semester ${semNum} &nbsp;→&nbsp; ${typeLabelMap[_activeExType] || _activeExType}
+      <span style="font-size:.72rem;color:var(--tc-muted);font-weight:600;margin-left:4px;">(${subjects.length} subject${subjects.length !== 1 ? 's' : ''})</span>
+    </div>
+    ${subjects.length === 0 ? `
+      <div class="tc-empty" style="padding:28px 20px;margin-bottom:14px;">
+        <div class="tc-empty-ico" style="font-size:1.8rem;">📋</div>
+        <div class="tc-empty-title">No Subjects Added</div>
+        <div class="tc-empty-sub">Click "Add Subject" below to start entering exam data.</div>
+      </div>` : `
+      <div class="exam-subj-hdr">
+        <span>Subject Name</span>
+        <span>Subject Code</span>
+        <span>Max Marks</span>
+        <span>Marks Obtained</span>
+        <span>Percentage</span>
+        <span></span>
+      </div>
+      <div id="examSubjRows">
+        ${subjects.map((s, i) => examSubjRowHTML(s, i)).join('')}
+      </div>`}
+    `
+
+  // Bind live percentage calculation
+  _bindExamRowListeners()
+}
+
+function examSubjRowHTML(s, idx) {
+  const max   = parseFloat(s.max)   || 100
+  const marks = parseFloat(s.marks) || 0
+  const pct   = max > 0 ? (marks / max * 100).toFixed(1) : '—'
+  const pctCol = parseFloat(pct) >= 75 ? 'var(--tc-green)' : parseFloat(pct) >= 50 ? 'var(--sp-gold, #fbbf24)' : 'var(--tc-red)'
+
+  return `<div class="exam-subj-row" data-idx="${idx}">
+    <input class="ti ex-subj-name" placeholder="Subject Name *" value="${esc(s.subject || s.subject_name || '')}" />
+    <input class="ti ex-subj-code" placeholder="e.g. CS3401" value="${esc(s.code || s.subject_code || '')}" />
+    <input class="ti ex-subj-max" type="number" placeholder="Max" value="${max}" min="0" max="200" step="0.5" />
+    <input class="ti ex-subj-marks" type="number" placeholder="Marks" value="${marks}" min="0" max="200" step="0.5" />
+    <span class="ex-subj-pct" style="color:${pctCol};font-weight:800;font-size:.85rem;text-align:center;">${pct}%</span>
+    <button type="button" class="exam-rm-btn" data-rm-idx="${idx}" title="Remove subject"><i class="fas fa-trash"></i></button>
+  </div>`
+}
+
+function _bindExamRowListeners() {
+  // Live percentage update
+  document.querySelectorAll('.exam-subj-row').forEach(row => {
+    const maxInp   = row.querySelector('.ex-subj-max')
+    const marksInp = row.querySelector('.ex-subj-marks')
+    const pctSpan  = row.querySelector('.ex-subj-pct')
+
+    const updatePct = () => {
+      const mx = parseFloat(maxInp?.value) || 0
+      const ob = parseFloat(marksInp?.value) || 0
+      if (mx > 0) {
+        const p = (ob / mx * 100).toFixed(1)
+        if (pctSpan) {
+          pctSpan.textContent = p + '%'
+          pctSpan.style.color = parseFloat(p) >= 75 ? 'var(--tc-green)' : parseFloat(p) >= 50 ? '#fbbf24' : 'var(--tc-red)'
+        }
+      } else {
+        if (pctSpan) { pctSpan.textContent = '—'; pctSpan.style.color = 'var(--tc-muted)' }
+      }
+    }
+
+    maxInp?.addEventListener('input', updatePct)
+    marksInp?.addEventListener('input', updatePct)
+
+    // Remove button
+    const rmBtn = row.querySelector('.exam-rm-btn')
+    if (rmBtn) {
+      rmBtn.addEventListener('click', () => {
+        _collectCurrentSubjects()
+        const idx = parseInt(rmBtn.getAttribute('data-rm-idx'))
+        if (!isNaN(idx) && _examData[_activeSem]?.[_activeExType]) {
+          _examData[_activeSem][_activeExType].splice(idx, 1)
+        }
+        renderExamSubjectsTable()
+      })
+    }
+  })
+}
+
+window.addExamSubjectRow = () => {
+  _collectCurrentSubjects()
+  if (!_examData[_activeSem]) _examData[_activeSem] = {}
+  if (!_examData[_activeSem][_activeExType]) _examData[_activeSem][_activeExType] = []
+  _examData[_activeSem][_activeExType].push({ subject: '', subject_name: '', code: '', subject_code: '', max: 100, marks: 0 })
+  renderExamSubjectsTable()
+  // Focus last row's name input
+  setTimeout(() => {
+    const rows = document.querySelectorAll('.exam-subj-row')
+    const lastRow = rows[rows.length - 1]
+    lastRow?.querySelector('.ex-subj-name')?.focus()
+  }, 60)
+}
+
+window.saveExamData = async () => {
+  if (!_examRegno) { showToast('No student loaded.', 'warning'); return }
+
+  // Collect current view
+  _collectCurrentSubjects()
+
+  // Validate at least one subject exists across all sems
+  let totalSubjects = 0
+  Object.values(_examData).forEach(sem => {
+    Object.values(sem).forEach(type => {
+      totalSubjects += (type || []).length
+    })
+  })
+
+  if (totalSubjects === 0) {
+    showToast('Please add at least one subject before saving.', 'warning')
+    return
+  }
+
+  const btn = document.getElementById('saveExamBtn')
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…' }
+
+  const payload = {
+    register_no: _examRegno,
+    exam_data:   _examData,
+    updated_at:  new Date().toISOString()
+  }
+
+  const { error } = await supabase.from('exam_information')
+    .upsert(payload, { onConflict: 'register_no' })
+
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save Exam Data' }
+
+  if (error) {
+    showToast('Save failed: ' + error.message, 'error')
+    return
+  }
+
+  showToast(`Exam data saved for ${_examRegno}! ✅`, 'success')
+
+  // Refresh mode badge to show "Editing Existing"
+  const modeBadge = document.getElementById('examModeBadge')
+  if (modeBadge) {
+    modeBadge.innerHTML = '<i class="fas fa-edit"></i> Editing Existing'
+    modeBadge.className = 'tbd tb-amber'
+  }
+}
+
+// ── END EXAM MANAGEMENT ───────────────────────────────────────
 
 // ── ATTENDANCE MANAGER ────────────────────────────────────────
 function renderAttMgr() {
@@ -1137,6 +1054,7 @@ function renderAttMgr() {
   </div>`
 }
 
+// Use data-room-id on cards — no ID in onclick strings at all
 function clsGrid(rooms, mine) {
   if (!rooms.length) {
     return `<div class="tc-empty" style="grid-column:1/-1">
@@ -1337,6 +1255,7 @@ window.openRoom = async id => {
 
   const sessionList = sessions || []
 
+  // Use data-view-sess attribute — no ID in onclick strings
   const sessRows = sessionList.length
     ? sessionList.map(s => `<tr>
         <td>${fmtDate(s.session_date)}</td>
@@ -1347,6 +1266,7 @@ window.openRoom = async id => {
       </tr>`).join('')
     : `<tr><td colspan="5" style="text-align:center;color:var(--tmut);padding:20px">No sessions in the last 30 days.</td></tr>`
 
+  // Use data attributes for all action buttons — zero string-escaping risk
   modal(`
   <div class="tc-mo open" id="mRoom">
     <div class="tc-mb tc-mb-lg">
