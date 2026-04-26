@@ -601,6 +601,7 @@ async function renderProfile(t) {
       <div class="tc-subj-chips">${subjs.map((s,i) => `<span class="tc-schip" style="animation-delay:${i*.06}s"><i class="fas fa-book"></i> ${esc(s)}</span>`).join('')}</div>
     </div>` : ''}
     <div id="examMgr" class="tu"></div>
+    <div id="odMgr" class="tu"></div>
     <div id="attMgr" class="tu"></div>
   </div>
   <style>
@@ -634,6 +635,7 @@ async function renderProfile(t) {
 
   setTimeout(initFU, 80)
   renderExamMgr()
+  renderOdMgr()
   renderAttMgr()
 }
 
@@ -673,7 +675,7 @@ function renderExamMgr() {
     <div class="tg" style="padding:26px 24px;">
       <p style="font-size:.88rem;color:var(--tc-muted);margin-bottom:18px;line-height:1.7;">
         <i class="fas fa-info-circle" style="color:var(--tc-blue)"></i>
-        Enter a student's Register Number to create or edit their exam details. Data is saved to the <strong style="color:var(--tc-amber)">exam_information</strong> table.
+        Enter a student's Register Number to create or edit their exam details. 
       </p>
       <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px;">
         <div style="flex:1;min-width:200px;">
@@ -1022,6 +1024,343 @@ window.saveExamData = async () => {
 }
 
 // ── END EXAM MANAGEMENT ───────────────────────────────────────
+
+// ══════════════════════════════════════════════════════════════
+// ── OD MANAGEMENT ────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+function renderOdMgr() {
+  const c = document.getElementById('odMgr'); if (!c) return
+  c.innerHTML = `
+  <div style="margin-top:30px;margin-bottom:8px">
+    <div class="tc-att-hdr"><i class="fas fa-user-check"></i> OD / Attendance Correction</div>
+    <div class="tg" style="padding:26px 24px;">
+      <p style="font-size:.88rem;color:var(--tc-muted);margin-bottom:18px;line-height:1.7;">
+        <i class="fas fa-info-circle" style="color:var(--tc-blue)"></i>
+        Enter a student's Register Number to view their attendance details and correct absent records by marking them as present (OD).
+      </p>
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px;">
+        <div style="flex:1;min-width:200px;">
+          <label class="tl" style="margin-bottom:7px;"><i class="fas fa-id-badge"></i> Student Register Number</label>
+          <input id="odRegnoInput" class="ti" placeholder="e.g. 22CS0001" style="text-transform:uppercase;"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();loadStudentOd();}" />
+        </div>
+        <button class="tb tb-pri" id="loadOdBtn" onclick="loadStudentOd()">
+          <i class="fas fa-search"></i> Load Attendance
+        </button>
+      </div>
+      <div id="odResultArea" style="display:none;"></div>
+      <div id="odLoadMsg" style="display:none;"></div>
+    </div>
+  </div>`
+}
+
+window.loadStudentOd = async () => {
+  const raw = document.getElementById('odRegnoInput')?.value?.trim().toUpperCase()
+  if (!raw) { showToast('Enter a Register Number.', 'warning'); return }
+
+  const btn = document.getElementById('loadOdBtn')
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading…' }
+
+  const msgEl = document.getElementById('odLoadMsg')
+  if (msgEl) { msgEl.style.display = 'none'; msgEl.innerHTML = '' }
+
+  const resultEl = document.getElementById('odResultArea')
+  if (resultEl) { resultEl.style.display = 'none'; resultEl.innerHTML = '' }
+
+  // Check student exists
+  const { data: stuData } = await supabase.from('student_information')
+    .select('register_no,name,department,year').ilike('register_no', raw).maybeSingle()
+
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-search"></i> Load Attendance' }
+
+  if (!stuData) {
+    if (msgEl) {
+      msgEl.style.display = 'flex'
+      msgEl.className = 'tc-msg tc-msg-err'
+      msgEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> Student not found with this Register Number.'
+    }
+    return
+  }
+
+  // Load attendance_information
+  const { data: attInfo } = await supabase.from('attendance_information')
+    .select('*').ilike('register_no', raw).maybeSingle()
+
+  if (!attInfo) {
+    if (msgEl) {
+      msgEl.style.display = 'flex'
+      msgEl.className = 'tc-msg tc-msg-err'
+      msgEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> No attendance data found for this student yet.'
+    }
+    return
+  }
+
+  // Load all attendance_records for this student
+  const { data: allRecords } = await supabase.from('attendance_records')
+    .select('*').ilike('register_no', raw).order('session_date', { ascending: false }).order('period', { ascending: true })
+
+  const records = allRecords || []
+  const absentRecords  = records.filter(r => r.status === 'absent')
+  const presentRecords = records.filter(r => r.status === 'present')
+
+  const totalDays   = attInfo.total_days   || 0
+  const presentDays = attInfo.present_days || 0
+  const absentDays  = attInfo.absent_days  || 0
+  const pct = totalDays > 0 ? ((presentDays / totalDays) * 100).toFixed(1) : '0.0'
+  const pctCol = parseFloat(pct) >= 75 ? 'var(--tc-green)' : parseFloat(pct) >= 65 ? '#fbbf24' : 'var(--tc-red)'
+
+  const yr = stuData.year || 0
+  const yrSfx = { 1:'st', 2:'nd', 3:'rd', 4:'th' }[yr] || 'th'
+
+  if (resultEl) {
+    resultEl.style.display = 'block'
+    resultEl.innerHTML = `
+    <div style="border:1px solid var(--tc-border);border-radius:16px;overflow:hidden;margin-bottom:4px;">
+
+      <!-- Student Header -->
+      <div style="background:rgba(245,158,11,0.08);border-bottom:1px solid var(--tc-border);
+                  padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="font-family:'Syne',sans-serif;font-size:1.05rem;font-weight:700;color:#fff;">
+            <i class="fas fa-user-graduate" style="color:var(--tc-amber);margin-right:8px;"></i>${esc(stuData.name || raw)}
+          </div>
+          <div style="font-size:.78rem;color:var(--tc-muted);margin-top:4px;">
+            ${esc(raw)}${stuData.department ? ' &bull; ' + esc(stuData.department) : ''}${yr ? ' &bull; Year ' + yr + yrSfx : ''}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <span class="tbd tb-amber" style="font-size:.9rem;padding:6px 16px;">
+            <i class="fas fa-percentage"></i> ${pct}% Attendance
+          </span>
+          <span class="tbd ${parseFloat(pct) >= 75 ? 'tb-green' : 'tb-red'}" style="font-size:.85rem;">
+            ${parseFloat(pct) >= 75
+              ? '<i class="fas fa-check-circle"></i> Good Standing'
+              : '<i class="fas fa-exclamation-triangle"></i> Low Attendance'}
+          </span>
+        </div>
+      </div>
+
+      <!-- Stats Row -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--tc-border);">
+        <div style="padding:14px 16px;text-align:center;border-right:1px solid var(--tc-border);">
+          <div style="font-family:'Syne',sans-serif;font-size:1.55rem;font-weight:800;color:var(--tc-blue);">${totalDays}</div>
+          <div style="font-size:.70rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-top:2px;">Total Days</div>
+        </div>
+        <div style="padding:14px 16px;text-align:center;border-right:1px solid var(--tc-border);">
+          <div style="font-family:'Syne',sans-serif;font-size:1.55rem;font-weight:800;color:var(--tc-green);">${presentDays}</div>
+          <div style="font-size:.70rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-top:2px;">Present</div>
+        </div>
+        <div style="padding:14px 16px;text-align:center;border-right:1px solid var(--tc-border);">
+          <div style="font-family:'Syne',sans-serif;font-size:1.55rem;font-weight:800;color:var(--tc-red);">${absentDays}</div>
+          <div style="font-size:.70rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-top:2px;">Absent</div>
+        </div>
+        <div style="padding:14px 16px;text-align:center;">
+          <div style="font-family:'Syne',sans-serif;font-size:1.55rem;font-weight:800;color:${pctCol};">${pct}%</div>
+          <div style="font-size:.70rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-top:2px;">Percentage</div>
+        </div>
+      </div>
+
+      <!-- Absent Records Section -->
+      <div style="padding:18px 20px;">
+        <div style="font-size:.9rem;font-weight:800;color:#fff;margin-bottom:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <i class="fas fa-times-circle" style="color:var(--tc-red);"></i>
+          Absent Sessions (${absentRecords.length})
+          <span style="font-size:.72rem;color:var(--tc-muted);font-weight:500;">
+            — Tick the checkboxes to grant OD &amp; mark as Present
+          </span>
+        </div>
+
+        ${absentRecords.length === 0
+          ? `<div style="text-align:center;padding:24px;color:var(--tc-muted);background:rgba(52,211,153,0.04);
+                         border:1px solid rgba(52,211,153,0.14);border-radius:12px;">
+              <i class="fas fa-check-circle" style="font-size:2rem;color:var(--tc-green);opacity:.6;display:block;margin-bottom:10px;"></i>
+              <div style="font-weight:700;color:var(--tc-green);margin-bottom:4px;">No Absent Records</div>
+              <div style="font-size:.82rem;">This student has no absent sessions on record.</div>
+            </div>`
+          : `<div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <button class="tb tb-ghost tb-sm" onclick="odSelectAll()">
+                <i class="fas fa-check-double"></i> Select All
+              </button>
+              <button class="tb tb-ghost tb-sm" onclick="odDeselectAll()">
+                <i class="fas fa-times"></i> Deselect All
+              </button>
+              <span id="odSelCount" style="font-size:.78rem;color:var(--tc-muted);font-weight:700;">0 selected</span>
+            </div>
+            <div id="odAbsentList" style="display:flex;flex-direction:column;gap:6px;max-height:400px;overflow-y:auto;padding-right:2px;">
+              ${absentRecords.map(r => {
+                const rawDate = (r.session_date || '').split('T')[0]
+                const dateStr = rawDate
+                  ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-IN', {
+                      weekday:'short', day:'2-digit', month:'short', year:'numeric'
+                    })
+                  : '—'
+                return `<label class="od-abs-row" data-record-id="${esc(r.id)}"
+                          style="display:flex;align-items:center;gap:12px;
+                                 padding:11px 14px;
+                                 background:rgba(248,113,113,0.05);
+                                 border:1px solid rgba(248,113,113,0.16);
+                                 border-radius:10px;cursor:pointer;
+                                 transition:all .22s;user-select:none;">
+                  <input type="checkbox" class="od-chk" data-record-id="${esc(r.id)}"
+                         onchange="odUpdateSelCount()"
+                         style="width:17px;height:17px;accent-color:var(--tc-green);cursor:pointer;flex-shrink:0;" />
+                  <div style="flex:1;">
+                    <div style="font-size:.86rem;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                      <i class="fas fa-calendar-times" style="color:var(--tc-red);font-size:.8rem;"></i>
+                      <span>${dateStr}</span>
+                      ${r.period ? `<span style="color:var(--tc-amber);background:rgba(245,158,11,0.10);padding:1px 8px;border-radius:50px;font-size:.75rem;">Period ${esc(String(r.period))}</span>` : ''}
+                    </div>
+                    <div style="font-size:.74rem;color:var(--tc-muted);margin-top:3px;">
+                      ${r.subject_name ? `<i class="fas fa-book" style="margin-right:4px;"></i>${esc(r.subject_name)}` : '<i class="fas fa-minus"></i> Subject not recorded'}
+                    </div>
+                  </div>
+                  <span class="od-row-badge" style="font-size:.72rem;font-weight:800;padding:3px 10px;border-radius:50px;
+                        flex-shrink:0;background:rgba(248,113,113,0.12);color:var(--tc-red);
+                        border:1px solid rgba(248,113,113,0.24);white-space:nowrap;">
+                    <i class="fas fa-times"></i> Absent
+                  </span>
+                </label>`
+              }).join('')}
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;padding-top:14px;border-top:1px solid var(--tc-border);">
+              <button class="tb tb-pri" id="saveOdBtn" onclick="saveOdChanges('${esc(raw)}')">
+                <i class="fas fa-user-check"></i> Grant OD &amp; Save
+              </button>
+            </div>`
+        }
+      </div>
+
+      <!-- Present Records Summary -->
+      ${presentRecords.length > 0 ? `
+      <div style="padding:0 20px 18px;border-top:1px solid var(--tc-border);">
+        <div style="font-size:.88rem;font-weight:800;color:var(--tc-green);margin:14px 0 10px;display:flex;align-items:center;gap:7px;">
+          <i class="fas fa-check-circle"></i> Present Sessions (${presentRecords.length})
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;max-height:140px;overflow-y:auto;">
+          ${presentRecords.map(r => {
+            const rawDate = (r.session_date || '').split('T')[0]
+            const dateStr = rawDate
+              ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'2-digit' })
+              : '—'
+            return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;
+                          background:rgba(52,211,153,0.07);border:1px solid rgba(52,211,153,0.20);
+                          border-radius:50px;font-size:.71rem;font-weight:700;color:var(--tc-green);">
+              <i class="fas fa-check" style="font-size:.6rem;"></i>
+              ${dateStr}${r.period ? ' P' + r.period : ''}${r.subject_name ? ' · ' + esc(r.subject_name) : ''}
+            </span>`
+          }).join('')}
+        </div>
+      </div>` : ''}
+    </div>`
+  }
+}
+
+window.odUpdateSelCount = () => {
+  const total = document.querySelectorAll('.od-chk').length
+  const checked = document.querySelectorAll('.od-chk:checked').length
+  const el = document.getElementById('odSelCount')
+  if (el) el.textContent = `${checked} of ${total} selected`
+}
+
+window.odSelectAll = () => {
+  document.querySelectorAll('.od-chk').forEach(c => { c.checked = true })
+  odUpdateSelCount()
+}
+
+window.odDeselectAll = () => {
+  document.querySelectorAll('.od-chk').forEach(c => { c.checked = false })
+  odUpdateSelCount()
+}
+
+window.saveOdChanges = async (regno) => {
+  const checkboxes = document.querySelectorAll('.od-chk:checked')
+  if (checkboxes.length === 0) {
+    showToast('No sessions selected. Please tick the checkboxes for sessions you want to grant OD.', 'warning')
+    return
+  }
+
+  const btn = document.getElementById('saveOdBtn')
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…' }
+
+  const selectedIds = Array.from(checkboxes)
+    .map(c => c.getAttribute('data-record-id'))
+    .filter(Boolean)
+
+  let successCount = 0
+  let errorCount   = 0
+
+  // Update each record to present
+  for (const recId of selectedIds) {
+    const { error } = await supabase.from('attendance_records')
+      .update({ status: 'present' }).eq('id', recId)
+    if (error) errorCount++
+    else successCount++
+  }
+
+  if (errorCount > 0 && successCount === 0) {
+    showToast(`Failed to update records. Please try again.`, 'error')
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-user-check"></i> Grant OD & Save' }
+    return
+  }
+
+  // Recalculate attendance_information for this student
+  await _recalcStudentAttendance(regno)
+
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-user-check"></i> Grant OD & Save' }
+
+  if (errorCount > 0) {
+    showToast(`${successCount} session(s) updated, ${errorCount} failed.`, 'warning')
+  } else {
+    showToast(`OD granted for ${successCount} session(s)! Attendance recalculated. ✅`, 'success')
+  }
+
+  // Reload the OD view with fresh data
+  setTimeout(() => loadStudentOd(), 400)
+}
+
+async function _recalcStudentAttendance(regno) {
+  try {
+    const { data: records } = await supabase.from('attendance_records')
+      .select('*').ilike('register_no', regno)
+
+    if (!records || !records.length) return
+
+    const totalDays    = records.length
+    const presentDays  = records.filter(r => r.status === 'present').length
+    const absentDays   = records.filter(r => r.status === 'absent').length
+
+    const absentDetails = records
+      .filter(r => r.status === 'absent')
+      .map(r => ({ date: r.session_date, period: r.period, subject_name: r.subject_name }))
+
+    // period_stats grouped by date
+    const statsByDate = {}
+    records.forEach(r => {
+      const d = r.session_date
+      if (!statsByDate[d]) statsByDate[d] = { date: d, present: 0, absent: 0, total: 0 }
+      statsByDate[d].total++
+      if (r.status === 'present') statsByDate[d].present++
+      else statsByDate[d].absent++
+    })
+
+    const { error } = await supabase.from('attendance_information').upsert({
+      register_no:    regno,
+      total_days:     totalDays,
+      present_days:   presentDays,
+      absent_days:    absentDays,
+      absent_details: absentDetails,
+      period_stats:   Object.values(statsByDate),
+      updated_at:     new Date().toISOString()
+    }, { onConflict: 'register_no' })
+
+    if (error) console.error('_recalcStudentAttendance error:', error)
+  } catch (err) {
+    console.error('_recalcStudentAttendance exception:', err)
+  }
+}
+
+// ── END OD MANAGEMENT ─────────────────────────────────────────
 
 // ── ATTENDANCE MANAGER ────────────────────────────────────────
 function renderAttMgr() {
