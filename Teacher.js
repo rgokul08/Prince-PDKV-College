@@ -1145,7 +1145,7 @@ window.loadStudentOd = async () => {
       <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--tc-border);">
         <div style="padding:14px 16px;text-align:center;border-right:1px solid var(--tc-border);">
           <div style="font-family:'Syne',sans-serif;font-size:1.55rem;font-weight:800;color:var(--tc-blue);">${totalDays}</div>
-          <div style="font-size:.70rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-top:2px;">Total Days</div>
+          <div style="font-size:.70rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-top:2px;">Total periods</div>
         </div>
         <div style="padding:14px 16px;text-align:center;border-right:1px solid var(--tc-border);">
           <div style="font-family:'Syne',sans-serif;font-size:1.55rem;font-weight:800;color:var(--tc-green);">${presentDays}</div>
@@ -1229,29 +1229,7 @@ window.loadStudentOd = async () => {
               </button>
             </div>`
         }
-      </div>
-
-      <!-- Present Records Summary -->
-      ${presentRecords.length > 0 ? `
-      <div style="padding:0 20px 18px;border-top:1px solid var(--tc-border);">
-        <div style="font-size:.88rem;font-weight:800;color:var(--tc-green);margin:14px 0 10px;display:flex;align-items:center;gap:7px;">
-          <i class="fas fa-check-circle"></i> Present Sessions (${presentRecords.length})
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;max-height:140px;overflow-y:auto;">
-          ${presentRecords.map(r => {
-            const rawDate = (r.session_date || '').split('T')[0]
-            const dateStr = rawDate
-              ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'2-digit' })
-              : '—'
-            return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;
-                          background:rgba(52,211,153,0.07);border:1px solid rgba(52,211,153,0.20);
-                          border-radius:50px;font-size:.71rem;font-weight:700;color:var(--tc-green);">
-              <i class="fas fa-check" style="font-size:.6rem;"></i>
-              ${dateStr}${r.period ? ' P' + r.period : ''}${r.subject_name ? ' · ' + esc(r.subject_name) : ''}
-            </span>`
-          }).join('')}
-        </div>
-      </div>` : ''}
+      </div>      
     </div>`
   }
 }
