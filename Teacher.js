@@ -675,7 +675,7 @@ function renderExamMgr() {
     <div class="tg" style="padding:26px 24px;">
       <p style="font-size:.88rem;color:var(--tc-muted);margin-bottom:18px;line-height:1.7;">
         <i class="fas fa-info-circle" style="color:var(--tc-blue)"></i>
-        Enter a student's Register Number to create or edit their exam details. 
+        Enter a student's Register Number to create or edit their exam details. Data is saved to the <strong style="color:var(--tc-amber)">exam_information</strong> table.
       </p>
       <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px;">
         <div style="flex:1;min-width:200px;">
@@ -1083,34 +1083,37 @@ window.loadStudentOd = async () => {
     return
   }
 
-  // Load attendance_information
-  const { data: attInfo } = await supabase.from('attendance_information')
-    .select('*').ilike('register_no', raw).maybeSingle()
+  // Load all attendance_records for this student (source of truth)
+  const { data: allRecords } = await supabase.from('attendance_records')
+    .select('*').ilike('register_no', raw)
+    .order('session_date', { ascending: false }).order('period', { ascending: true })
 
-  if (!attInfo) {
+  const records = allRecords || []
+
+  if (records.length === 0) {
     if (msgEl) {
       msgEl.style.display = 'flex'
       msgEl.className = 'tc-msg tc-msg-err'
-      msgEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> No attendance data found for this student yet.'
+      msgEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> No attendance records found for this student yet.'
     }
     return
   }
 
-  // Load all attendance_records for this student
-  const { data: allRecords } = await supabase.from('attendance_records')
-    .select('*').ilike('register_no', raw).order('session_date', { ascending: false }).order('period', { ascending: true })
+  // ── Compute stats from attendance_records (unique dates = total days) ──
+  const uniqueDates    = [...new Set(records.map(r => (r.session_date || '').split('T')[0]).filter(Boolean))]
+  const totalDays      = uniqueDates.length           // each unique date = 1 working day
+  const presentPeriods = records.filter(r => r.status === 'present').length
+  const absentPeriods  = records.filter(r => r.status === 'absent').length
+  const totalPeriods   = records.length
 
-  const records = allRecords || []
+  // Attendance % based on periods (present periods / total periods * 100)
+  const pct    = totalPeriods > 0 ? ((presentPeriods / totalPeriods) * 100).toFixed(1) : '0.0'
+  const pctCol = parseFloat(pct) >= 75 ? 'var(--tc-green)' : parseFloat(pct) >= 65 ? '#fbbf24' : 'var(--tc-red)'
+
   const absentRecords  = records.filter(r => r.status === 'absent')
   const presentRecords = records.filter(r => r.status === 'present')
 
-  const totalDays   = attInfo.total_days   || 0
-  const presentDays = attInfo.present_days || 0
-  const absentDays  = attInfo.absent_days  || 0
-  const pct = totalDays > 0 ? ((presentDays / totalDays) * 100).toFixed(1) : '0.0'
-  const pctCol = parseFloat(pct) >= 75 ? 'var(--tc-green)' : parseFloat(pct) >= 65 ? '#fbbf24' : 'var(--tc-red)'
-
-  const yr = stuData.year || 0
+  const yr    = stuData.year || 0
   const yrSfx = { 1:'st', 2:'nd', 3:'rd', 4:'th' }[yr] || 'th'
 
   if (resultEl) {
@@ -1141,23 +1144,27 @@ window.loadStudentOd = async () => {
         </div>
       </div>
 
-      <!-- Stats Row -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--tc-border);">
-        <div style="padding:14px 16px;text-align:center;border-right:1px solid var(--tc-border);">
-          <div style="font-family:'Syne',sans-serif;font-size:1.55rem;font-weight:800;color:var(--tc-blue);">${totalDays}</div>
-          <div style="font-size:.70rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-top:2px;">Total periods</div>
+      <!-- Stats Row: 5 columns -->
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);border-bottom:1px solid var(--tc-border);">
+        <div style="padding:13px 10px;text-align:center;border-right:1px solid var(--tc-border);">
+          <div style="font-family:'Syne',sans-serif;font-size:1.45rem;font-weight:800;color:var(--tc-blue);">${totalDays}</div>
+          <div style="font-size:.65rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;line-height:1.3;">Total<br>Days</div>
         </div>
-        <div style="padding:14px 16px;text-align:center;border-right:1px solid var(--tc-border);">
-          <div style="font-family:'Syne',sans-serif;font-size:1.55rem;font-weight:800;color:var(--tc-green);">${presentDays}</div>
-          <div style="font-size:.70rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-top:2px;">Present</div>
+        <div style="padding:13px 10px;text-align:center;border-right:1px solid var(--tc-border);">
+          <div style="font-family:'Syne',sans-serif;font-size:1.45rem;font-weight:800;color:var(--tc-green);">${presentPeriods}</div>
+          <div style="font-size:.65rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;line-height:1.3;">Present<br>Periods</div>
         </div>
-        <div style="padding:14px 16px;text-align:center;border-right:1px solid var(--tc-border);">
-          <div style="font-family:'Syne',sans-serif;font-size:1.55rem;font-weight:800;color:var(--tc-red);">${absentDays}</div>
-          <div style="font-size:.70rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-top:2px;">Absent</div>
+        <div style="padding:13px 10px;text-align:center;border-right:1px solid var(--tc-border);">
+          <div style="font-family:'Syne',sans-serif;font-size:1.45rem;font-weight:800;color:var(--tc-red);">${absentPeriods}</div>
+          <div style="font-size:.65rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;line-height:1.3;">Absent<br>Periods</div>
         </div>
-        <div style="padding:14px 16px;text-align:center;">
-          <div style="font-family:'Syne',sans-serif;font-size:1.55rem;font-weight:800;color:${pctCol};">${pct}%</div>
-          <div style="font-size:.70rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-top:2px;">Percentage</div>
+        <div style="padding:13px 10px;text-align:center;border-right:1px solid var(--tc-border);">
+          <div style="font-family:'Syne',sans-serif;font-size:1.45rem;font-weight:800;color:var(--tc-muted);">${totalPeriods}</div>
+          <div style="font-size:.65rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;line-height:1.3;">Total<br>Periods</div>
+        </div>
+        <div style="padding:13px 10px;text-align:center;">
+          <div style="font-family:'Syne',sans-serif;font-size:1.45rem;font-weight:800;color:${pctCol};">${pct}%</div>
+          <div style="font-size:.65rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;line-height:1.3;">Attendance<br>%</div>
         </div>
       </div>
 
@@ -1165,9 +1172,9 @@ window.loadStudentOd = async () => {
       <div style="padding:18px 20px;">
         <div style="font-size:.9rem;font-weight:800;color:#fff;margin-bottom:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <i class="fas fa-times-circle" style="color:var(--tc-red);"></i>
-          Absent Sessions (${absentRecords.length})
+          Absent Sessions (${absentRecords.length} period${absentRecords.length !== 1 ? 's' : ''})
           <span style="font-size:.72rem;color:var(--tc-muted);font-weight:500;">
-            — Tick the checkboxes to grant OD &amp; mark as Present
+            — Tick to grant OD &amp; mark as Present
           </span>
         </div>
 
@@ -1229,7 +1236,29 @@ window.loadStudentOd = async () => {
               </button>
             </div>`
         }
-      </div>      
+      </div>
+
+      <!-- Present Records Summary -->
+      ${presentRecords.length > 0 ? `
+      <div style="padding:0 20px 18px;border-top:1px solid var(--tc-border);">
+        <div style="font-size:.88rem;font-weight:800;color:var(--tc-green);margin:14px 0 10px;display:flex;align-items:center;gap:7px;">
+          <i class="fas fa-check-circle"></i> Present Sessions (${presentRecords.length} period${presentRecords.length !== 1 ? 's' : ''})
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;max-height:140px;overflow-y:auto;">
+          ${presentRecords.map(r => {
+            const rawDate = (r.session_date || '').split('T')[0]
+            const dateStr = rawDate
+              ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'2-digit' })
+              : '—'
+            return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;
+                          background:rgba(52,211,153,0.07);border:1px solid rgba(52,211,153,0.20);
+                          border-radius:50px;font-size:.71rem;font-weight:700;color:var(--tc-green);">
+              <i class="fas fa-check" style="font-size:.6rem;"></i>
+              ${dateStr}${r.period ? ' P' + r.period : ''}${r.subject_name ? ' · ' + esc(r.subject_name) : ''}
+            </span>`
+          }).join('')}
+        </div>
+      </div>` : ''}
     </div>`
   }
 }
@@ -1563,27 +1592,97 @@ window.openRoom = async id => {
 
   const stus = _stus.filter(s => (room.student_regnos || []).includes(s.register_no))
 
-  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30)
+  // Last 7 days only
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 6)
   const cutoffISO = cutoff.toISOString().split('T')[0]
+  const todayISO  = new Date().toISOString().split('T')[0]
 
   const { data: sessions } = await supabase.from('attendance_sessions').select('*')
-    .eq('classroom_id', id).gte('session_date', cutoffISO)
-    .order('session_date', { ascending: false }).order('period', { ascending: true }).limit(30)
+    .eq('classroom_id', id)
+    .gte('session_date', cutoffISO)
+    .lte('session_date', todayISO)
+    .order('session_date', { ascending: false })
+    .order('period',       { ascending: true })
 
   const sessionList = sessions || []
 
-  // Use data-view-sess attribute — no ID in onclick strings
-  const sessRows = sessionList.length
-    ? sessionList.map(s => `<tr>
-        <td>${fmtDate(s.session_date)}</td>
-        <td>Period ${s.period}</td>
-        <td>${esc(s.subject_name || '—')}</td>
-        <td><span class="tbd tb-teal"><i class="fas fa-users"></i> ${(room.student_regnos || []).length}</span></td>
-        <td><button class="tb tb-ghost tb-sm" data-view-sess="${esc(s.id)}"><i class="fas fa-eye"></i> View</button></td>
-      </tr>`).join('')
-    : `<tr><td colspan="5" style="text-align:center;color:var(--tmut);padding:20px">No sessions in the last 30 days.</td></tr>`
+  // Group sessions by date
+  const byDate = {}
+  sessionList.forEach(s => {
+    const d = s.session_date
+    if (!byDate[d]) byDate[d] = []
+    byDate[d].push(s)
+  })
+  const sortedDates = Object.keys(byDate).sort((a, b) => b.localeCompare(a))
 
-  // Use data attributes for all action buttons — zero string-escaping risk
+  // Build date-grouped HTML with expand/collapse
+  const sessGroupHTML = sortedDates.length
+    ? sortedDates.map((date, di) => {
+        const dateSessions = byDate[date]
+        const dateStr = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', {
+          weekday:'short', day:'2-digit', month:'short', year:'numeric'
+        })
+        const isToday = date === todayISO
+        const sessionRows = dateSessions.map(s => `
+          <tr>
+            <td style="padding-left:28px;color:var(--tmut);font-size:.80rem;">Period ${s.period}</td>
+            <td>${esc(s.subject_name || '—')}</td>
+            <td><span class="tbd tb-teal" style="font-size:.72rem;"><i class="fas fa-users"></i> ${(room.student_regnos||[]).length}</span></td>
+            <td><button class="tb tb-ghost tb-sm" style="padding:4px 10px;font-size:.75rem;" data-view-sess="${esc(s.id)}"><i class="fas fa-eye"></i> View</button></td>
+          </tr>`).join('')
+
+        return `
+        <tbody class="date-group-hdr" onclick="tcToggleDateGroup('dg-${di}')"
+               style="cursor:pointer;">
+          <tr style="background:rgba(245,158,11,0.06);border-bottom:1px solid var(--tc-border);">
+            <td colspan="4" style="padding:10px 14px;">
+              <div style="display:flex;align-items:center;gap:9px;">
+                <i class="fas fa-chevron-down dg-chev" id="chev-${di}"
+                   style="font-size:.72rem;color:var(--tc-amber);transition:transform .22s;"></i>
+                <span style="font-weight:800;color:#fff;font-size:.88rem;">
+                  ${dateStr}${isToday ? ' <span style="background:rgba(245,158,11,.18);color:var(--tc-amber);font-size:.68rem;padding:1px 7px;border-radius:50px;margin-left:4px;">TODAY</span>' : ''}
+                </span>
+                <span class="tbd tb-amber" style="font-size:.70rem;padding:2px 8px;margin-left:auto;">
+                  ${dateSessions.length} Period${dateSessions.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+        <tbody id="dg-${di}" style="display:table-row-group;">
+          ${sessionRows}
+        </tbody>`
+      }).join('')
+    : `<tbody><tr><td colspan="4" style="text-align:center;color:var(--tmut);padding:24px;">
+        <i class="fas fa-calendar-times" style="font-size:1.6rem;opacity:.3;display:block;margin-bottom:8px;"></i>
+        No attendance sessions in the last 7 days.
+      </td></tr></tbody>`
+
+  // Students list HTML (hidden by default, toggled)
+  const stuListHTML = stus.length
+    ? stus.map(s => `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;
+                  background:rgba(255,255,255,0.03);border:1px solid var(--tc-border);
+                  border-radius:9px;transition:background .2s;">
+        <div style="width:32px;height:32px;border-radius:50%;
+                    background:linear-gradient(135deg,rgba(245,158,11,.20),rgba(96,165,250,.20));
+                    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+                    font-size:.72rem;font-weight:800;color:var(--tc-amber);">
+          ${esc((s.name || s.register_no).charAt(0).toUpperCase())}
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:.86rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${esc(s.name || '—')}
+          </div>
+          <div style="font-size:.72rem;color:var(--tc-muted);">
+            ${esc(s.register_no)}${s.department ? ' · ' + esc(s.department) : ''}${s.year ? ' · Yr ' + s.year : ''}
+          </div>
+        </div>
+      </div>`).join('')
+    : `<div style="text-align:center;padding:18px;color:var(--tc-muted);font-size:.84rem;">
+        No student profiles found for this classroom.
+      </div>`
+
   modal(`
   <div class="tc-mo open" id="mRoom">
     <div class="tc-mb tc-mb-lg">
@@ -1592,12 +1691,13 @@ window.openRoom = async id => {
         <button class="tc-mc" onclick="closeM('mRoom')"><i class="fas fa-times"></i></button>
       </div>
       <div class="tc-mbd">
+        <!-- Header info + action buttons -->
         <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:13px;margin-bottom:20px">
           <div>
             <div style="font-size:1.1rem;color:#fff;font-weight:700">${esc(room.class_name)}</div>
             <div style="font-size:.8rem;color:var(--tmut);margin-top:4px">
               ${room.subject ? `<i class="fas fa-book"></i> ${esc(room.subject)} &bull; ` : ''}
-              <i class="fas fa-users"></i> ${(room.student_regnos || []).length} Students &bull;
+              <i class="fas fa-users"></i> ${(room.student_regnos||[]).length} Students &bull;
               <i class="fas fa-user-tie"></i> ${esc(room.teacher_name || room.teacher_regno || '—')}
             </div>
           </div>
@@ -1607,30 +1707,79 @@ window.openRoom = async id => {
             <button class="tb tb-danger tb-sm" data-delete-room="${esc(room.id)}"><i class="fas fa-trash"></i> Delete</button>
           </div>
         </div>
+
+        <!-- Last 7 Days Sessions (grouped by date) -->
         <div style="margin-bottom:20px">
-          <div style="font-size:.9rem;color:#fff;font-weight:700;margin-bottom:11px">
-            <i class="fas fa-history" style="color:var(--tamb)"></i> Attendance Sessions (Last 30 Days)
-            <span style="font-size:.75rem;color:var(--tmut);font-weight:400;margin-left:8px">${sessionList.length} session(s)</span>
+          <div style="font-size:.9rem;color:#fff;font-weight:700;margin-bottom:11px;display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
+            <span><i class="fas fa-history" style="color:var(--tamb)"></i> Attendance Sessions — Last 7 Days</span>
+            <span style="font-size:.75rem;color:var(--tmut);font-weight:400;">
+              ${sortedDates.length} day${sortedDates.length !== 1 ? 's' : ''}, ${sessionList.length} session${sessionList.length !== 1 ? 's' : ''}
+            </span>
           </div>
-          <div class="tc-tbl-wrap"><table class="tc-tbl">
-            <thead><tr><th>Date</th><th>Period</th><th>Subject</th><th>Students</th><th>Action</th></tr></thead>
-            <tbody>${sessRows}</tbody>
-          </table></div>
+          <div class="tc-tbl-wrap">
+            <table class="tc-tbl" style="table-layout:fixed;">
+              <thead>
+                <tr>
+                  <th style="width:42%">Date / Period</th>
+                  <th style="width:28%">Subject</th>
+                  <th style="width:16%">Students</th>
+                  <th style="width:14%">Action</th>
+                </tr>
+              </thead>
+              ${sessGroupHTML}
+            </table>
+          </div>
         </div>
+
+        <!-- Student List (collapsible) -->
         <div>
-          <div style="font-size:.9rem;color:#fff;font-weight:700;margin-bottom:10px">
-            <i class="fas fa-users" style="color:var(--tamb)"></i> Students (${stus.length})
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+            <div style="font-size:.9rem;color:#fff;font-weight:700;">
+              <i class="fas fa-users" style="color:var(--tamb)"></i> Students (${stus.length})
+            </div>
+            <button class="tb tb-ghost tb-sm" id="togStuListBtn" onclick="tcToggleStuList()">
+              <i class="fas fa-eye"></i> Show Student List
+            </button>
           </div>
-          <div style="display:flex;flex-wrap:wrap;gap:7px">
-            ${stus.length
-              ? stus.map(s => `<span class="tbd tb-teal"><i class="fas fa-user"></i> ${esc(s.name || s.register_no)}</span>`).join('')
-              : '<span style="color:var(--tmut);font-size:.84rem">No student profiles found for this classroom.</span>'}
+          <div id="roomStuList" style="display:none;
+               display:none;flex-direction:column;gap:7px;
+               max-height:280px;overflow-y:auto;padding-right:2px;">
+            ${stuListHTML}
           </div>
         </div>
       </div>
     </div>
-  </div>`)
+  </div>
+
+  <style>
+    .date-group-hdr:hover tr { background:rgba(245,158,11,0.10) !important; }
+  </style>`)
 }
+
+// Toggle date group expand/collapse in classroom modal
+window.tcToggleDateGroup = id => {
+  const tbody = document.getElementById(id)
+  if (!tbody) return
+  const idx    = id.replace('dg-','')
+  const chev   = document.getElementById('chev-' + idx)
+  const hidden = tbody.style.display === 'none'
+  tbody.style.display = hidden ? 'table-row-group' : 'none'
+  if (chev) chev.style.transform = hidden ? 'rotate(0deg)' : 'rotate(-90deg)'
+}
+
+// Toggle student list panel in classroom modal
+window.tcToggleStuList = () => {
+  const panel = document.getElementById('roomStuList')
+  const btn   = document.getElementById('togStuListBtn')
+  if (!panel) return
+  const shown = panel.style.display === 'flex'
+  panel.style.display = shown ? 'none' : 'flex'
+  panel.style.flexDirection = 'column'
+  if (btn) btn.innerHTML = shown
+    ? '<i class="fas fa-eye"></i> Show Student List'
+    : '<i class="fas fa-eye-slash"></i> Hide Student List'
+}
+
 
 // ── CONFIRM DELETE ────────────────────────────────────────────
 window.confirmDeleteRoom = async id => {
