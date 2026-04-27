@@ -104,6 +104,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     const saveEditBtn = e.target.closest('[data-save-edit-room]')
     if (saveEditBtn) { await saveEditRoom(saveEditBtn.getAttribute('data-save-edit-room')); return }
 
+    // Toggle date group expand/collapse in room modal
+    const dateGroupHdr = e.target.closest('.tc-date-group-hdr')
+    if (dateGroupHdr && !e.target.closest('button')) {
+      const grp = dateGroupHdr.closest('.tc-date-group')
+      if (grp) {
+        grp.classList.toggle('expanded')
+        const arrow = dateGroupHdr.querySelector('.tc-date-arrow')
+        if (arrow) arrow.style.transform = grp.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)'
+      }
+      return
+    }
+
+    // Show student list in room modal
+    const stuListBtn = e.target.closest('[data-show-stu-list]')
+    if (stuListBtn) {
+      const roomId = stuListBtn.getAttribute('data-show-stu-list')
+      const panel = document.getElementById('tc-stu-list-panel-' + roomId)
+      if (panel) {
+        const isHidden = panel.style.display === 'none'
+        panel.style.display = isHidden ? 'block' : 'none'
+        stuListBtn.innerHTML = isHidden
+          ? '<i class="fas fa-users"></i> Hide Student List'
+          : '<i class="fas fa-users"></i> Student List'
+      }
+      return
+    }
+
     // Select-all dept button
     const sallBtn = e.target.closest('.tc-dp-sall[data-yr]')
     if (sallBtn) {
@@ -168,6 +195,15 @@ function fmtDate(d) {
   try {
     return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', {
       day:'2-digit', month:'short', year:'numeric'
+    })
+  } catch { return d }
+}
+
+function fmtDateFull(d) {
+  if (!d) return '—'
+  try {
+    return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', {
+      weekday:'short', day:'2-digit', month:'short', year:'numeric'
     })
   } catch { return d }
 }
@@ -305,7 +341,6 @@ async function fetchRoom(id) {
   if (!id) return null
   const { data, error } = await supabase.from('classrooms').select('*').eq('id', id).maybeSingle()
   if (error || !data) return null
-  // Keep local cache in sync
   const idx = _rooms.findIndex(r => r.id === id)
   if (idx >= 0) _rooms[idx] = data
   else _rooms.unshift(data)
@@ -631,6 +666,58 @@ async function renderProfile(t) {
     .tc-prof-dept-new{font-size:.88rem;color:var(--tc-muted);margin-bottom:16px;}
     .tc-prof-badges-center{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;}
     .tc-prof-btns-center{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;}
+
+    /* ── Date group styles for classroom session view ── */
+    .tc-date-group { border:1px solid var(--tc-border); border-radius:12px; margin-bottom:8px; overflow:hidden; }
+    .tc-date-group-hdr {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:12px 16px; cursor:pointer;
+      background:rgba(255,255,255,0.03);
+      transition:background .22s ease;
+      user-select:none;
+    }
+    .tc-date-group-hdr:hover { background:rgba(245,158,11,0.07); }
+    .tc-date-group.expanded .tc-date-group-hdr { background:rgba(245,158,11,0.09); border-bottom:1px solid var(--tc-border); }
+    .tc-date-group-left { display:flex; align-items:center; gap:12px; }
+    .tc-date-group-date { font-weight:800; color:#fff; font-size:.92rem; }
+    .tc-date-group-meta { font-size:.76rem; color:var(--tc-muted); }
+    .tc-date-arrow { color:var(--tc-amber); font-size:.8rem; transition:transform .25s ease; flex-shrink:0; }
+    .tc-date-group-body { display:none; padding:12px 14px; }
+    .tc-date-group.expanded .tc-date-group-body { display:block; }
+    .tc-period-row {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:9px 12px; border-radius:9px; margin-bottom:6px;
+      background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.05);
+      flex-wrap:wrap; gap:8px;
+    }
+    .tc-period-row:last-child { margin-bottom:0; }
+    .tc-period-left { display:flex; align-items:center; gap:10px; }
+    .tc-period-badge {
+      font-size:.72rem; font-weight:800; padding:2px 10px;
+      border-radius:50px; background:rgba(245,158,11,.12);
+      color:var(--tc-amber); border:1px solid rgba(245,158,11,.25);
+      white-space:nowrap;
+    }
+    .tc-period-subj { font-size:.80rem; color:var(--tc-muted); }
+
+    /* Student list panel */
+    .tc-stu-list-panel {
+      margin-top:14px; padding:16px;
+      background:rgba(255,255,255,0.025);
+      border:1px solid var(--tc-border);
+      border-radius:12px;
+    }
+    .tc-stu-list-title {
+      font-size:.84rem; font-weight:800; color:var(--tc-amber);
+      margin-bottom:12px; display:flex; align-items:center; gap:7px;
+    }
+    .tc-stu-chips { display:flex; flex-wrap:wrap; gap:7px; }
+    .tc-stu-chip {
+      display:inline-flex; align-items:center; gap:5px;
+      padding:4px 12px; border-radius:50px; font-size:.76rem; font-weight:700;
+      background:rgba(45,212,191,0.08); color:var(--tc-teal);
+      border:1px solid rgba(45,212,191,0.22);
+    }
   </style>`
 
   setTimeout(initFU, 80)
@@ -661,9 +748,8 @@ function setupRoomsRealtime() {
 // ── EXAM MANAGEMENT ──────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════
 
-// State for exam editor
 let _examRegno    = ''
-let _examData     = {}  // { sem1: { ciat1: [...], ciat2: [...], final: [...] }, ... }
+let _examData     = {}
 let _activeSem    = 'sem1'
 let _activeExType = 'ciat1'
 
@@ -691,25 +777,18 @@ function renderExamMgr() {
           <span id="examStudentBadge" class="tbd tb-amber" style="font-size:.86rem;padding:6px 16px;"></span>
           <span class="tbd tb-blue" id="examModeBadge" style="font-size:.80rem;padding:5px 13px;"></span>
         </div>
-
-        <!-- Semester Tabs -->
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px;" id="examSemTabs">
           ${[1,2,3,4,5,6,7,8].map(n => `
             <button class="tc-tab${n===1?' act':''}" data-exsem="sem${n}" onclick="switchExamSem('sem${n}',this)">
               Sem ${n}
             </button>`).join('')}
         </div>
-
-        <!-- Exam Type Tabs -->
         <div class="tc-tabs" style="margin-bottom:20px;" id="examTypeTabs">
           <button class="tc-tab act" data-extype="ciat1" onclick="switchExamType('ciat1',this)"><i class="fas fa-pencil-alt"></i> CIAT – I</button>
           <button class="tc-tab" data-extype="ciat2" onclick="switchExamType('ciat2',this)"><i class="fas fa-pen-nib"></i> CIAT – II</button>
           <button class="tc-tab" data-extype="final" onclick="switchExamType('final',this)"><i class="fas fa-graduation-cap"></i> Final Exam</button>
         </div>
-
-        <!-- Subjects Table -->
         <div id="examSubjectsArea"></div>
-
         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--tc-border);">
           <button class="tb tb-ghost tb-sm" onclick="addExamSubjectRow()"><i class="fas fa-plus"></i> Add Subject</button>
           <button class="tb tb-pri" id="saveExamBtn" onclick="saveExamData()"><i class="fas fa-save"></i> Save Exam Data</button>
@@ -718,27 +797,19 @@ function renderExamMgr() {
       <div id="examLoadMsg" style="display:none;"></div>
     </div>
   </div>
-
   <style>
     .exam-subj-row {
-      display:grid;
-      grid-template-columns: 2fr 1fr 80px 80px 80px 36px;
-      gap:8px; align-items:center;
-      padding:8px 10px; margin-bottom:6px;
-      background:rgba(255,255,255,0.03);
-      border:1px solid var(--tc-border);
-      border-radius:10px;
-      transition:background .2s;
+      display:grid; grid-template-columns: 2fr 1fr 80px 80px 80px 36px;
+      gap:8px; align-items:center; padding:8px 10px; margin-bottom:6px;
+      background:rgba(255,255,255,0.03); border:1px solid var(--tc-border);
+      border-radius:10px; transition:background .2s;
     }
     .exam-subj-row:hover { background:rgba(255,255,255,0.06); }
     .exam-subj-row input { width:100%; }
     .exam-subj-hdr {
-      display:grid;
-      grid-template-columns: 2fr 1fr 80px 80px 80px 36px;
-      gap:8px; padding:6px 10px;
-      font-size:.70rem; font-weight:800;
-      text-transform:uppercase; letter-spacing:.06em;
-      color:var(--tc-muted); margin-bottom:4px;
+      display:grid; grid-template-columns: 2fr 1fr 80px 80px 80px 36px;
+      gap:8px; padding:6px 10px; font-size:.70rem; font-weight:800;
+      text-transform:uppercase; letter-spacing:.06em; color:var(--tc-muted); margin-bottom:4px;
     }
     @media(max-width:600px){
       .exam-subj-row,.exam-subj-hdr{grid-template-columns:1fr 1fr;gap:6px;}
@@ -748,8 +819,7 @@ function renderExamMgr() {
       width:30px;height:30px;border-radius:8px;
       background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.28);
       color:var(--tc-red);cursor:pointer;font-size:.8rem;
-      display:flex;align-items:center;justify-content:center;
-      transition:all .25s;flex-shrink:0;
+      display:flex;align-items:center;justify-content:center; transition:all .25s;flex-shrink:0;
     }
     .exam-rm-btn:hover{background:rgba(248,113,113,.22);transform:scale(1.1);}
   </style>`
@@ -770,7 +840,6 @@ window.loadStudentExam = async () => {
   const msgEl = document.getElementById('examLoadMsg')
   if (msgEl) { msgEl.style.display = 'none'; msgEl.innerHTML = '' }
 
-  // Check student exists
   const { data: stuData } = await supabase.from('student_information')
     .select('register_no,name,department,year').ilike('register_no', raw).maybeSingle()
 
@@ -785,7 +854,6 @@ window.loadStudentExam = async () => {
     return
   }
 
-  // Load existing exam data
   const { data: examRow } = await supabase.from('exam_information')
     .select('*').ilike('register_no', raw).maybeSingle()
 
@@ -794,7 +862,6 @@ window.loadStudentExam = async () => {
     _examData = JSON.parse(JSON.stringify(examRow.exam_data))
   }
 
-  // Show editor
   const editorEl = document.getElementById('examEditorArea')
   if (editorEl) editorEl.style.display = 'block'
 
@@ -813,7 +880,6 @@ window.loadStudentExam = async () => {
 
   if (msgEl) { msgEl.style.display = 'none' }
 
-  // Reset tabs
   document.querySelectorAll('#examSemTabs .tc-tab').forEach(t => t.classList.remove('act'))
   document.querySelector('#examSemTabs [data-exsem="sem1"]')?.classList.add('act')
   document.querySelectorAll('#examTypeTabs .tc-tab').forEach(t => t.classList.remove('act'))
@@ -825,7 +891,6 @@ window.loadStudentExam = async () => {
 }
 
 window.switchExamSem = (sem, btn) => {
-  // Save current before switching
   _collectCurrentSubjects()
   _activeSem = sem
   document.querySelectorAll('#examSemTabs .tc-tab').forEach(t => t.classList.remove('act'))
@@ -874,7 +939,6 @@ function _collectCurrentSubjects() {
 function renderExamSubjectsTable() {
   const area = document.getElementById('examSubjectsArea'); if (!area) return
   const subjects = _getSubjects()
-
   const typeLabelMap = { ciat1: 'CIAT – I', ciat2: 'CIAT – II', final: 'Final Examination' }
   const semNum = parseInt(_activeSem.replace('sem',''))
 
@@ -890,19 +954,13 @@ function renderExamSubjectsTable() {
         <div class="tc-empty-sub">Click "Add Subject" below to start entering exam data.</div>
       </div>` : `
       <div class="exam-subj-hdr">
-        <span>Subject Name</span>
-        <span>Subject Code</span>
-        <span>Max Marks</span>
-        <span>Marks Obtained</span>
-        <span>Percentage</span>
-        <span></span>
+        <span>Subject Name</span><span>Subject Code</span><span>Max Marks</span>
+        <span>Marks Obtained</span><span>Percentage</span><span></span>
       </div>
       <div id="examSubjRows">
         ${subjects.map((s, i) => examSubjRowHTML(s, i)).join('')}
-      </div>`}
-    `
+      </div>`}`
 
-  // Bind live percentage calculation
   _bindExamRowListeners()
 }
 
@@ -923,7 +981,6 @@ function examSubjRowHTML(s, idx) {
 }
 
 function _bindExamRowListeners() {
-  // Live percentage update
   document.querySelectorAll('.exam-subj-row').forEach(row => {
     const maxInp   = row.querySelector('.ex-subj-max')
     const marksInp = row.querySelector('.ex-subj-marks')
@@ -946,7 +1003,6 @@ function _bindExamRowListeners() {
     maxInp?.addEventListener('input', updatePct)
     marksInp?.addEventListener('input', updatePct)
 
-    // Remove button
     const rmBtn = row.querySelector('.exam-rm-btn')
     if (rmBtn) {
       rmBtn.addEventListener('click', () => {
@@ -967,26 +1023,19 @@ window.addExamSubjectRow = () => {
   if (!_examData[_activeSem][_activeExType]) _examData[_activeSem][_activeExType] = []
   _examData[_activeSem][_activeExType].push({ subject: '', subject_name: '', code: '', subject_code: '', max: 100, marks: 0 })
   renderExamSubjectsTable()
-  // Focus last row's name input
   setTimeout(() => {
     const rows = document.querySelectorAll('.exam-subj-row')
-    const lastRow = rows[rows.length - 1]
-    lastRow?.querySelector('.ex-subj-name')?.focus()
+    rows[rows.length - 1]?.querySelector('.ex-subj-name')?.focus()
   }, 60)
 }
 
 window.saveExamData = async () => {
   if (!_examRegno) { showToast('No student loaded.', 'warning'); return }
-
-  // Collect current view
   _collectCurrentSubjects()
 
-  // Validate at least one subject exists across all sems
   let totalSubjects = 0
   Object.values(_examData).forEach(sem => {
-    Object.values(sem).forEach(type => {
-      totalSubjects += (type || []).length
-    })
+    Object.values(sem).forEach(type => { totalSubjects += (type || []).length })
   })
 
   if (totalSubjects === 0) {
@@ -997,25 +1046,15 @@ window.saveExamData = async () => {
   const btn = document.getElementById('saveExamBtn')
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…' }
 
-  const payload = {
-    register_no: _examRegno,
-    exam_data:   _examData,
-    updated_at:  new Date().toISOString()
-  }
-
   const { error } = await supabase.from('exam_information')
-    .upsert(payload, { onConflict: 'register_no' })
+    .upsert({ register_no: _examRegno, exam_data: _examData, updated_at: new Date().toISOString() },
+            { onConflict: 'register_no' })
 
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save Exam Data' }
-
-  if (error) {
-    showToast('Save failed: ' + error.message, 'error')
-    return
-  }
+  if (error) { showToast('Save failed: ' + error.message, 'error'); return }
 
   showToast(`Exam data saved for ${_examRegno}! ✅`, 'success')
 
-  // Refresh mode badge to show "Editing Existing"
   const modeBadge = document.getElementById('examModeBadge')
   if (modeBadge) {
     modeBadge.innerHTML = '<i class="fas fa-edit"></i> Editing Existing'
@@ -1026,7 +1065,7 @@ window.saveExamData = async () => {
 // ── END EXAM MANAGEMENT ───────────────────────────────────────
 
 // ══════════════════════════════════════════════════════════════
-// ── OD MANAGEMENT ────────────────────────────────────────────
+// ── OD MANAGEMENT (UPDATED) ───────────────────────────────────
 // ══════════════════════════════════════════════════════════════
 
 function renderOdMgr() {
@@ -1037,7 +1076,7 @@ function renderOdMgr() {
     <div class="tg" style="padding:26px 24px;">
       <p style="font-size:.88rem;color:var(--tc-muted);margin-bottom:18px;line-height:1.7;">
         <i class="fas fa-info-circle" style="color:var(--tc-blue)"></i>
-        Enter a student's Register Number to view their attendance details and correct absent records by marking them as present (OD).
+        Enter a student's Register Number to view their attendance and correct absent records by granting OD.
       </p>
       <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px;">
         <div style="flex:1;min-width:200px;">
@@ -1083,10 +1122,11 @@ window.loadStudentOd = async () => {
     return
   }
 
-  // Load all attendance_records for this student (source of truth)
+  // Load all attendance_records for this student
   const { data: allRecords } = await supabase.from('attendance_records')
     .select('*').ilike('register_no', raw)
-    .order('session_date', { ascending: false }).order('period', { ascending: true })
+    .order('session_date', { ascending: true })
+    .order('period', { ascending: true })
 
   const records = allRecords || []
 
@@ -1099,21 +1139,58 @@ window.loadStudentOd = async () => {
     return
   }
 
-  // ── Compute stats from attendance_records (unique dates = total days) ──
-  const uniqueDates    = [...new Set(records.map(r => (r.session_date || '').split('T')[0]).filter(Boolean))]
-  const totalDays      = uniqueDates.length           // each unique date = 1 working day
+  // ── Attendance Calculation (same logic as shared.js / Student.js) ──
+  // Group records by date
+  const byDate = {}
+  records.forEach(r => {
+    const d = (r.session_date || '').split('T')[0]
+    if (!d) return
+    if (!byDate[d]) byDate[d] = { present: 0, absent: 0, total: 0 }
+    byDate[d].total++
+    if (r.status === 'present') byDate[d].present++
+    else byDate[d].absent++
+  })
+
+  const workingDates = Object.keys(byDate).sort()
+  const D = workingDates.length // total working days
+
+  // Sum of daily present/absent values (each day = present_periods/total_periods for that day)
+  let sumP = 0, sumA = 0
+  workingDates.forEach(date => {
+    const day = byDate[date]
+    sumP += day.total > 0 ? day.present / day.total : 0
+    sumA += day.total > 0 ? day.absent  / day.total : 0
+  })
+
+  const presentPct = D > 0 ? (sumP / D) * 100 : 0
+  const absentPct  = D > 0 ? (sumA / D) * 100 : 0
+
+  const totalPeriods   = records.length
   const presentPeriods = records.filter(r => r.status === 'present').length
   const absentPeriods  = records.filter(r => r.status === 'absent').length
-  const totalPeriods   = records.length
 
-  // Attendance % based on periods (present periods / total periods * 100)
-  const pct    = totalPeriods > 0 ? ((presentPeriods / totalPeriods) * 100).toFixed(1) : '0.0'
-  const pctCol = parseFloat(pct) >= 75 ? 'var(--tc-green)' : parseFloat(pct) >= 65 ? '#fbbf24' : 'var(--tc-red)'
+  const pNum = parseFloat(presentPct.toFixed(1))
+  const aNum = parseFloat(absentPct.toFixed(1))
+  const pctCol = pNum >= 75 ? 'var(--tc-green)' : pNum >= 65 ? '#fbbf24' : 'var(--tc-red)'
+
+  // Warning text
+  let warnTxt = '', warnBg = '', warnCol = ''
+  if (pNum >= 75) {
+    warnTxt = '✅ Good standing! Attendance meets the 75% requirement.'
+    warnBg  = 'rgba(52,211,153,0.10)'; warnCol = '#6ee7b7'
+  } else if (pNum >= 65) {
+    const need = Math.ceil((0.75 * D - sumP) / 0.25)
+    warnTxt = `⚠️ Low attendance! Needs ${Math.max(0, need)} more consecutive full-day attendances to reach 75%.`
+    warnBg  = 'rgba(251,191,36,0.10)'; warnCol = '#fde68a'
+  } else {
+    warnTxt = '🚨 Critical attendance! Immediate improvement required.'
+    warnBg  = 'rgba(248,113,113,0.12)'; warnCol = '#fca5a5'
+  }
 
   const absentRecords  = records.filter(r => r.status === 'absent')
   const presentRecords = records.filter(r => r.status === 'present')
 
-  const yr    = stuData.year || 0
+  const yr = stuData.year || 0
   const yrSfx = { 1:'st', 2:'nd', 3:'rd', 4:'th' }[yr] || 'th'
 
   if (resultEl) {
@@ -1134,10 +1211,10 @@ window.loadStudentOd = async () => {
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <span class="tbd tb-amber" style="font-size:.9rem;padding:6px 16px;">
-            <i class="fas fa-percentage"></i> ${pct}% Attendance
+            <i class="fas fa-percentage"></i> ${pNum.toFixed(1)}% Attendance
           </span>
-          <span class="tbd ${parseFloat(pct) >= 75 ? 'tb-green' : 'tb-red'}" style="font-size:.85rem;">
-            ${parseFloat(pct) >= 75
+          <span class="tbd ${pNum >= 75 ? 'tb-green' : 'tb-red'}" style="font-size:.85rem;">
+            ${pNum >= 75
               ? '<i class="fas fa-check-circle"></i> Good Standing'
               : '<i class="fas fa-exclamation-triangle"></i> Low Attendance'}
           </span>
@@ -1146,35 +1223,40 @@ window.loadStudentOd = async () => {
 
       <!-- Stats Row: 5 columns -->
       <div style="display:grid;grid-template-columns:repeat(5,1fr);border-bottom:1px solid var(--tc-border);">
-        <div style="padding:13px 10px;text-align:center;border-right:1px solid var(--tc-border);">
-          <div style="font-family:'Syne',sans-serif;font-size:1.45rem;font-weight:800;color:var(--tc-blue);">${totalDays}</div>
-          <div style="font-size:.65rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;line-height:1.3;">Total<br>Days</div>
+        <div style="padding:14px 10px;text-align:center;border-right:1px solid var(--tc-border);">
+          <div style="font-family:'Syne',sans-serif;font-size:1.45rem;font-weight:800;color:var(--tc-blue);">${D}</div>
+          <div style="font-size:.68rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">Working Days</div>
         </div>
-        <div style="padding:13px 10px;text-align:center;border-right:1px solid var(--tc-border);">
+        <div style="padding:14px 10px;text-align:center;border-right:1px solid var(--tc-border);">
           <div style="font-family:'Syne',sans-serif;font-size:1.45rem;font-weight:800;color:var(--tc-green);">${presentPeriods}</div>
-          <div style="font-size:.65rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;line-height:1.3;">Present<br>Periods</div>
+          <div style="font-size:.68rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">Present Periods</div>
         </div>
-        <div style="padding:13px 10px;text-align:center;border-right:1px solid var(--tc-border);">
+        <div style="padding:14px 10px;text-align:center;border-right:1px solid var(--tc-border);">
           <div style="font-family:'Syne',sans-serif;font-size:1.45rem;font-weight:800;color:var(--tc-red);">${absentPeriods}</div>
-          <div style="font-size:.65rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;line-height:1.3;">Absent<br>Periods</div>
+          <div style="font-size:.68rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">Absent Periods</div>
         </div>
-        <div style="padding:13px 10px;text-align:center;border-right:1px solid var(--tc-border);">
-          <div style="font-family:'Syne',sans-serif;font-size:1.45rem;font-weight:800;color:var(--tc-muted);">${totalPeriods}</div>
-          <div style="font-size:.65rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;line-height:1.3;">Total<br>Periods</div>
+        <div style="padding:14px 10px;text-align:center;border-right:1px solid var(--tc-border);">
+          <div style="font-family:'Syne',sans-serif;font-size:1.45rem;font-weight:800;color:#93c5fd;">${totalPeriods}</div>
+          <div style="font-size:.68rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">Total Periods</div>
         </div>
-        <div style="padding:13px 10px;text-align:center;">
-          <div style="font-family:'Syne',sans-serif;font-size:1.45rem;font-weight:800;color:${pctCol};">${pct}%</div>
-          <div style="font-size:.65rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;line-height:1.3;">Attendance<br>%</div>
+        <div style="padding:14px 10px;text-align:center;">
+          <div style="font-family:'Syne',sans-serif;font-size:1.45rem;font-weight:800;color:${pctCol};">${pNum.toFixed(1)}%</div>
+          <div style="font-size:.68rem;color:var(--tc-muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">Attendance %</div>
         </div>
+      </div>
+
+      <!-- Warning bar -->
+      <div style="padding:10px 20px;background:${warnBg};border-bottom:1px solid var(--tc-border);">
+        <span style="font-size:.83rem;font-weight:700;color:${warnCol};">${warnTxt}</span>
       </div>
 
       <!-- Absent Records Section -->
       <div style="padding:18px 20px;">
         <div style="font-size:.9rem;font-weight:800;color:#fff;margin-bottom:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <i class="fas fa-times-circle" style="color:var(--tc-red);"></i>
-          Absent Sessions (${absentRecords.length} period${absentRecords.length !== 1 ? 's' : ''})
+          Absent Sessions (${absentRecords.length})
           <span style="font-size:.72rem;color:var(--tc-muted);font-weight:500;">
-            — Tick to grant OD &amp; mark as Present
+            — Tick checkboxes to grant OD &amp; mark as Present
           </span>
         </div>
 
@@ -1222,7 +1304,7 @@ window.loadStudentOd = async () => {
                       ${r.subject_name ? `<i class="fas fa-book" style="margin-right:4px;"></i>${esc(r.subject_name)}` : '<i class="fas fa-minus"></i> Subject not recorded'}
                     </div>
                   </div>
-                  <span class="od-row-badge" style="font-size:.72rem;font-weight:800;padding:3px 10px;border-radius:50px;
+                  <span style="font-size:.72rem;font-weight:800;padding:3px 10px;border-radius:50px;
                         flex-shrink:0;background:rgba(248,113,113,0.12);color:var(--tc-red);
                         border:1px solid rgba(248,113,113,0.24);white-space:nowrap;">
                     <i class="fas fa-times"></i> Absent
@@ -1242,7 +1324,7 @@ window.loadStudentOd = async () => {
       ${presentRecords.length > 0 ? `
       <div style="padding:0 20px 18px;border-top:1px solid var(--tc-border);">
         <div style="font-size:.88rem;font-weight:800;color:var(--tc-green);margin:14px 0 10px;display:flex;align-items:center;gap:7px;">
-          <i class="fas fa-check-circle"></i> Present Sessions (${presentRecords.length} period${presentRecords.length !== 1 ? 's' : ''})
+          <i class="fas fa-check-circle"></i> Present Sessions (${presentRecords.length})
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;max-height:140px;overflow-y:auto;">
           ${presentRecords.map(r => {
@@ -1264,7 +1346,7 @@ window.loadStudentOd = async () => {
 }
 
 window.odUpdateSelCount = () => {
-  const total = document.querySelectorAll('.od-chk').length
+  const total   = document.querySelectorAll('.od-chk').length
   const checked = document.querySelectorAll('.od-chk:checked').length
   const el = document.getElementById('odSelCount')
   if (el) el.textContent = `${checked} of ${total} selected`
@@ -1283,7 +1365,7 @@ window.odDeselectAll = () => {
 window.saveOdChanges = async (regno) => {
   const checkboxes = document.querySelectorAll('.od-chk:checked')
   if (checkboxes.length === 0) {
-    showToast('No sessions selected. Please tick the checkboxes for sessions you want to grant OD.', 'warning')
+    showToast('No sessions selected. Tick the checkboxes for sessions you want to grant OD.', 'warning')
     return
   }
 
@@ -1294,10 +1376,8 @@ window.saveOdChanges = async (regno) => {
     .map(c => c.getAttribute('data-record-id'))
     .filter(Boolean)
 
-  let successCount = 0
-  let errorCount   = 0
+  let successCount = 0, errorCount = 0
 
-  // Update each record to present
   for (const recId of selectedIds) {
     const { error } = await supabase.from('attendance_records')
       .update({ status: 'present' }).eq('id', recId)
@@ -1306,12 +1386,11 @@ window.saveOdChanges = async (regno) => {
   }
 
   if (errorCount > 0 && successCount === 0) {
-    showToast(`Failed to update records. Please try again.`, 'error')
+    showToast('Failed to update records. Please try again.', 'error')
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-user-check"></i> Grant OD & Save' }
     return
   }
 
-  // Recalculate attendance_information for this student
   await _recalcStudentAttendance(regno)
 
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-user-check"></i> Grant OD & Save' }
@@ -1322,7 +1401,6 @@ window.saveOdChanges = async (regno) => {
     showToast(`OD granted for ${successCount} session(s)! Attendance recalculated. ✅`, 'success')
   }
 
-  // Reload the OD view with fresh data
   setTimeout(() => loadStudentOd(), 400)
 }
 
@@ -1336,12 +1414,9 @@ async function _recalcStudentAttendance(regno) {
     const totalDays    = records.length
     const presentDays  = records.filter(r => r.status === 'present').length
     const absentDays   = records.filter(r => r.status === 'absent').length
-
-    const absentDetails = records
-      .filter(r => r.status === 'absent')
+    const absentDetails = records.filter(r => r.status === 'absent')
       .map(r => ({ date: r.session_date, period: r.period, subject_name: r.subject_name }))
 
-    // period_stats grouped by date
     const statsByDate = {}
     records.forEach(r => {
       const d = r.session_date
@@ -1351,7 +1426,7 @@ async function _recalcStudentAttendance(regno) {
       else statsByDate[d].absent++
     })
 
-    const { error } = await supabase.from('attendance_information').upsert({
+    await supabase.from('attendance_information').upsert({
       register_no:    regno,
       total_days:     totalDays,
       present_days:   presentDays,
@@ -1361,10 +1436,7 @@ async function _recalcStudentAttendance(regno) {
       updated_at:     new Date().toISOString()
     }, { onConflict: 'register_no' })
 
-    if (error) console.error('_recalcStudentAttendance error:', error)
-  } catch (err) {
-    console.error('_recalcStudentAttendance exception:', err)
-  }
+  } catch (err) { console.error('_recalcStudentAttendance error:', err) }
 }
 
 // ── END OD MANAGEMENT ─────────────────────────────────────────
@@ -1400,7 +1472,6 @@ function renderAttMgr() {
   </div>`
 }
 
-// Use data-room-id on cards — no ID in onclick strings at all
 function clsGrid(rooms, mine) {
   if (!rooms.length) {
     return `<div class="tc-empty" style="grid-column:1/-1">
@@ -1584,7 +1655,7 @@ window.saveRoom = async () => {
   refreshGrids()
 }
 
-// ── OPEN ROOM — always fetches fresh ─────────────────────────
+// ── OPEN ROOM (UPDATED) — last 7 days grouped by date ────────
 window.openRoom = async id => {
   if (!id) { showToast('Invalid classroom ID.', 'error'); return }
   const room = await fetchRoom(id)
@@ -1592,8 +1663,9 @@ window.openRoom = async id => {
 
   const stus = _stus.filter(s => (room.student_regnos || []).includes(s.register_no))
 
-  // Last 7 days only
-  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 6)
+  // Fetch last 7 days of sessions
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 6) // today + 6 days back = 7 days total
   const cutoffISO = cutoff.toISOString().split('T')[0]
   const todayISO  = new Date().toISOString().split('T')[0]
 
@@ -1602,86 +1674,80 @@ window.openRoom = async id => {
     .gte('session_date', cutoffISO)
     .lte('session_date', todayISO)
     .order('session_date', { ascending: false })
-    .order('period',       { ascending: true })
+    .order('period', { ascending: true })
 
   const sessionList = sessions || []
 
   // Group sessions by date
   const byDate = {}
   sessionList.forEach(s => {
-    const d = s.session_date
+    const d = (s.session_date || '').split('T')[0]
+    if (!d) return
     if (!byDate[d]) byDate[d] = []
     byDate[d].push(s)
   })
+
+  // Sort dates descending (most recent first)
   const sortedDates = Object.keys(byDate).sort((a, b) => b.localeCompare(a))
 
-  // Build date-grouped HTML with expand/collapse
-  const sessGroupHTML = sortedDates.length
-    ? sortedDates.map((date, di) => {
-        const dateSessions = byDate[date]
-        const dateStr = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', {
-          weekday:'short', day:'2-digit', month:'short', year:'numeric'
-        })
+  // Build grouped date HTML
+  const dateGroupsHtml = sortedDates.length === 0
+    ? `<div style="text-align:center;padding:24px;color:var(--tc-muted);">
+        <i class="fas fa-calendar-times" style="font-size:2rem;opacity:.3;display:block;margin-bottom:10px;"></i>
+        No sessions in the last 7 days.
+       </div>`
+    : sortedDates.map(date => {
+        const daySessions = byDate[date]
         const isToday = date === todayISO
-        const sessionRows = dateSessions.map(s => `
-          <tr>
-            <td style="padding-left:28px;color:var(--tmut);font-size:.80rem;">Period ${s.period}</td>
-            <td>${esc(s.subject_name || '—')}</td>
-            <td><span class="tbd tb-teal" style="font-size:.72rem;"><i class="fas fa-users"></i> ${(room.student_regnos||[]).length}</span></td>
-            <td><button class="tb tb-ghost tb-sm" style="padding:4px 10px;font-size:.75rem;" data-view-sess="${esc(s.id)}"><i class="fas fa-eye"></i> View</button></td>
-          </tr>`).join('')
+        const dateStr = fmtDateFull(date)
+        const periodCount = daySessions.length
+
+        // Collect unique subjects for summary
+        const subjects = [...new Set(daySessions.map(s => s.subject_name).filter(Boolean))]
+        const subjSummary = subjects.length > 0 ? subjects.slice(0, 2).join(', ') + (subjects.length > 2 ? '…' : '') : ''
+
+        const periodRows = daySessions.map(s => `
+          <div class="tc-period-row">
+            <div class="tc-period-left">
+              <span class="tc-period-badge">Period ${s.period || '—'}</span>
+              <span class="tc-period-subj">${esc(s.subject_name || 'No subject recorded')}</span>
+            </div>
+            <button class="tb tb-ghost tb-sm" data-view-sess="${esc(s.id)}"
+              style="font-size:.72rem;padding:5px 12px;">
+              <i class="fas fa-eye"></i> View
+            </button>
+          </div>`).join('')
 
         return `
-        <tbody class="date-group-hdr" onclick="tcToggleDateGroup('dg-${di}')"
-               style="cursor:pointer;">
-          <tr style="background:rgba(245,158,11,0.06);border-bottom:1px solid var(--tc-border);">
-            <td colspan="4" style="padding:10px 14px;">
-              <div style="display:flex;align-items:center;gap:9px;">
-                <i class="fas fa-chevron-down dg-chev" id="chev-${di}"
-                   style="font-size:.72rem;color:var(--tc-amber);transition:transform .22s;"></i>
-                <span style="font-weight:800;color:#fff;font-size:.88rem;">
-                  ${dateStr}${isToday ? ' <span style="background:rgba(245,158,11,.18);color:var(--tc-amber);font-size:.68rem;padding:1px 7px;border-radius:50px;margin-left:4px;">TODAY</span>' : ''}
-                </span>
-                <span class="tbd tb-amber" style="font-size:.70rem;padding:2px 8px;margin-left:auto;">
-                  ${dateSessions.length} Period${dateSessions.length !== 1 ? 's' : ''}
-                </span>
+        <div class="tc-date-group">
+          <div class="tc-date-group-hdr">
+            <div class="tc-date-group-left">
+              <div>
+                <div class="tc-date-group-date">
+                  ${isToday ? '<span style="color:var(--tc-amber);font-size:.72rem;font-weight:800;margin-right:6px;background:rgba(245,158,11,0.12);padding:1px 7px;border-radius:50px;border:1px solid rgba(245,158,11,0.25);">TODAY</span>' : ''}
+                  ${dateStr}
+                </div>
+                <div class="tc-date-group-meta">
+                  ${periodCount} period${periodCount !== 1 ? 's' : ''}
+                  ${subjSummary ? ` &bull; ${esc(subjSummary)}` : ''}
+                </div>
               </div>
-            </td>
-          </tr>
-        </tbody>
-        <tbody id="dg-${di}" style="display:table-row-group;">
-          ${sessionRows}
-        </tbody>`
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="tbd tb-amber" style="font-size:.72rem;padding:2px 9px;">${periodCount} Period${periodCount !== 1 ? 's' : ''}</span>
+              <i class="fas fa-chevron-down tc-date-arrow"></i>
+            </div>
+          </div>
+          <div class="tc-date-group-body">
+            ${periodRows}
+          </div>
+        </div>`
       }).join('')
-    : `<tbody><tr><td colspan="4" style="text-align:center;color:var(--tmut);padding:24px;">
-        <i class="fas fa-calendar-times" style="font-size:1.6rem;opacity:.3;display:block;margin-bottom:8px;"></i>
-        No attendance sessions in the last 7 days.
-      </td></tr></tbody>`
 
-  // Students list HTML (hidden by default, toggled)
-  const stuListHTML = stus.length
-    ? stus.map(s => `
-      <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;
-                  background:rgba(255,255,255,0.03);border:1px solid var(--tc-border);
-                  border-radius:9px;transition:background .2s;">
-        <div style="width:32px;height:32px;border-radius:50%;
-                    background:linear-gradient(135deg,rgba(245,158,11,.20),rgba(96,165,250,.20));
-                    display:flex;align-items:center;justify-content:center;flex-shrink:0;
-                    font-size:.72rem;font-weight:800;color:var(--tc-amber);">
-          ${esc((s.name || s.register_no).charAt(0).toUpperCase())}
-        </div>
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:.86rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-            ${esc(s.name || '—')}
-          </div>
-          <div style="font-size:.72rem;color:var(--tc-muted);">
-            ${esc(s.register_no)}${s.department ? ' · ' + esc(s.department) : ''}${s.year ? ' · Yr ' + s.year : ''}
-          </div>
-        </div>
-      </div>`).join('')
-    : `<div style="text-align:center;padding:18px;color:var(--tc-muted);font-size:.84rem;">
-        No student profiles found for this classroom.
-      </div>`
+  // Student list panel HTML
+  const stuListHtml = stus.length > 0
+    ? stus.map(s => `<span class="tc-stu-chip"><i class="fas fa-user"></i> ${esc(s.name || s.register_no)}</span>`).join('')
+    : '<span style="color:var(--tc-muted);font-size:.84rem;">No student profiles found for this classroom.</span>'
 
   modal(`
   <div class="tc-mo open" id="mRoom">
@@ -1691,13 +1757,14 @@ window.openRoom = async id => {
         <button class="tc-mc" onclick="closeM('mRoom')"><i class="fas fa-times"></i></button>
       </div>
       <div class="tc-mbd">
-        <!-- Header info + action buttons -->
+
+        <!-- Room info & action buttons -->
         <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:13px;margin-bottom:20px">
           <div>
             <div style="font-size:1.1rem;color:#fff;font-weight:700">${esc(room.class_name)}</div>
-            <div style="font-size:.8rem;color:var(--tmut);margin-top:4px">
+            <div style="font-size:.8rem;color:var(--tc-muted);margin-top:4px">
               ${room.subject ? `<i class="fas fa-book"></i> ${esc(room.subject)} &bull; ` : ''}
-              <i class="fas fa-users"></i> ${(room.student_regnos||[]).length} Students &bull;
+              <i class="fas fa-users"></i> ${(room.student_regnos || []).length} Students &bull;
               <i class="fas fa-user-tie"></i> ${esc(room.teacher_name || room.teacher_regno || '—')}
             </div>
           </div>
@@ -1708,78 +1775,37 @@ window.openRoom = async id => {
           </div>
         </div>
 
-        <!-- Last 7 Days Sessions (grouped by date) -->
+        <!-- Student List toggle button -->
+        <div style="margin-bottom:18px;">
+          <button class="tb tb-ghost tb-sm" data-show-stu-list="${esc(room.id)}">
+            <i class="fas fa-users"></i> Student List
+          </button>
+          <div id="tc-stu-list-panel-${esc(room.id)}" class="tc-stu-list-panel" style="display:none;">
+            <div class="tc-stu-list-title">
+              <i class="fas fa-users"></i> Students in this Classroom (${stus.length})
+            </div>
+            <div class="tc-stu-chips">${stuListHtml}</div>
+          </div>
+        </div>
+
+        <!-- Last 7 days attendance sessions (grouped by date) -->
         <div style="margin-bottom:20px">
-          <div style="font-size:.9rem;color:#fff;font-weight:700;margin-bottom:11px;display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
-            <span><i class="fas fa-history" style="color:var(--tamb)"></i> Attendance Sessions — Last 7 Days</span>
-            <span style="font-size:.75rem;color:var(--tmut);font-weight:400;">
-              ${sortedDates.length} day${sortedDates.length !== 1 ? 's' : ''}, ${sessionList.length} session${sessionList.length !== 1 ? 's' : ''}
+          <div style="font-size:.9rem;color:#fff;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span><i class="fas fa-history" style="color:var(--tc-amber)"></i> Attendance Sessions — Last 7 Days</span>
+            <span style="font-size:.75rem;color:var(--tc-muted);font-weight:400;">${sortedDates.length} day${sortedDates.length !== 1 ? 's' : ''} · ${sessionList.length} session${sessionList.length !== 1 ? 's' : ''}</span>
+            <span style="font-size:.72rem;color:var(--tc-muted);font-weight:500;">
+              (Click a date to expand sessions)
             </span>
           </div>
-          <div class="tc-tbl-wrap">
-            <table class="tc-tbl" style="table-layout:fixed;">
-              <thead>
-                <tr>
-                  <th style="width:42%">Date / Period</th>
-                  <th style="width:28%">Subject</th>
-                  <th style="width:16%">Students</th>
-                  <th style="width:14%">Action</th>
-                </tr>
-              </thead>
-              ${sessGroupHTML}
-            </table>
+          <div id="dateGroupsContainer">
+            ${dateGroupsHtml}
           </div>
         </div>
 
-        <!-- Student List (collapsible) -->
-        <div>
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-            <div style="font-size:.9rem;color:#fff;font-weight:700;">
-              <i class="fas fa-users" style="color:var(--tamb)"></i> Students (${stus.length})
-            </div>
-            <button class="tb tb-ghost tb-sm" id="togStuListBtn" onclick="tcToggleStuList()">
-              <i class="fas fa-eye"></i> Show Student List
-            </button>
-          </div>
-          <div id="roomStuList" style="display:none;
-               display:none;flex-direction:column;gap:7px;
-               max-height:280px;overflow-y:auto;padding-right:2px;">
-            ${stuListHTML}
-          </div>
-        </div>
       </div>
     </div>
-  </div>
-
-  <style>
-    .date-group-hdr:hover tr { background:rgba(245,158,11,0.10) !important; }
-  </style>`)
+  </div>`)
 }
-
-// Toggle date group expand/collapse in classroom modal
-window.tcToggleDateGroup = id => {
-  const tbody = document.getElementById(id)
-  if (!tbody) return
-  const idx    = id.replace('dg-','')
-  const chev   = document.getElementById('chev-' + idx)
-  const hidden = tbody.style.display === 'none'
-  tbody.style.display = hidden ? 'table-row-group' : 'none'
-  if (chev) chev.style.transform = hidden ? 'rotate(0deg)' : 'rotate(-90deg)'
-}
-
-// Toggle student list panel in classroom modal
-window.tcToggleStuList = () => {
-  const panel = document.getElementById('roomStuList')
-  const btn   = document.getElementById('togStuListBtn')
-  if (!panel) return
-  const shown = panel.style.display === 'flex'
-  panel.style.display = shown ? 'none' : 'flex'
-  panel.style.flexDirection = 'column'
-  if (btn) btn.innerHTML = shown
-    ? '<i class="fas fa-eye"></i> Show Student List'
-    : '<i class="fas fa-eye-slash"></i> Hide Student List'
-}
-
 
 // ── CONFIRM DELETE ────────────────────────────────────────────
 window.confirmDeleteRoom = async id => {
@@ -1797,7 +1823,7 @@ window.confirmDeleteRoom = async id => {
         <div style="text-align:center;padding:16px 0 24px;">
           <div style="font-size:2.5rem;margin-bottom:14px;">🗑️</div>
           <div style="font-size:1rem;color:#fff;font-weight:700;margin-bottom:10px;">Delete "${esc(room.class_name)}"?</div>
-          <div style="font-size:.86rem;color:var(--tmut);line-height:1.65;margin-bottom:22px;">
+          <div style="font-size:.86rem;color:var(--tc-muted);line-height:1.65;margin-bottom:22px;">
             This will permanently delete the classroom and all its attendance records. This action cannot be undone.
           </div>
           <div style="display:flex;gap:10px;justify-content:center;">
@@ -1827,7 +1853,7 @@ window.deleteRoom = async id => {
   refreshGrids()
 }
 
-// ── MARK ATTENDANCE — always fetches fresh ────────────────────
+// ── MARK ATTENDANCE ───────────────────────────────────────────
 window.openMarkAtt = async id => {
   if (!id) return
   const room = await fetchRoom(id)
@@ -2032,7 +2058,7 @@ window.viewSess = async sessId => {
   </div>`)
 }
 
-// ── EDIT CLASSROOM — always fetches fresh ────────────────────
+// ── EDIT CLASSROOM ────────────────────────────────────────────
 window.openEditRoom = async id => {
   if (!id) return
   const room = await fetchRoom(id)
