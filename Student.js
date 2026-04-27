@@ -1,7 +1,4 @@
-// ================================================================
-// Student.js — PDKV Student Portal v3 (debugged)
-// ADDED: OTP email verification on profile setup/edit email field
-// ================================================================
+
 import { supabase } from './supabaseClient.js'
 import {
   initStickyHeader, initHamburger, initScrollAnimations,
