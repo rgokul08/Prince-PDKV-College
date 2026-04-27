@@ -761,7 +761,7 @@ function renderExamMgr() {
     <div class="tg" style="padding:26px 24px;">
       <p style="font-size:.88rem;color:var(--tc-muted);margin-bottom:18px;line-height:1.7;">
         <i class="fas fa-info-circle" style="color:var(--tc-blue)"></i>
-        Enter a student's Register Number to create or edit their exam details. Data is saved to the <strong style="color:var(--tc-amber)">exam_information</strong> table.
+        Enter a student's Register Number to create or edit their exam details.
       </p>
       <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px;">
         <div style="flex:1;min-width:200px;">
@@ -1320,27 +1320,7 @@ window.loadStudentOd = async () => {
         }
       </div>
 
-      <!-- Present Records Summary -->
-      ${presentRecords.length > 0 ? `
-      <div style="padding:0 20px 18px;border-top:1px solid var(--tc-border);">
-        <div style="font-size:.88rem;font-weight:800;color:var(--tc-green);margin:14px 0 10px;display:flex;align-items:center;gap:7px;">
-          <i class="fas fa-check-circle"></i> Present Sessions (${presentRecords.length})
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;max-height:140px;overflow-y:auto;">
-          ${presentRecords.map(r => {
-            const rawDate = (r.session_date || '').split('T')[0]
-            const dateStr = rawDate
-              ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'2-digit' })
-              : '—'
-            return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;
-                          background:rgba(52,211,153,0.07);border:1px solid rgba(52,211,153,0.20);
-                          border-radius:50px;font-size:.71rem;font-weight:700;color:var(--tc-green);">
-              <i class="fas fa-check" style="font-size:.6rem;"></i>
-              ${dateStr}${r.period ? ' P' + r.period : ''}${r.subject_name ? ' · ' + esc(r.subject_name) : ''}
-            </span>`
-          }).join('')}
-        </div>
-      </div>` : ''}
+      
     </div>`
   }
 }
