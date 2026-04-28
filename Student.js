@@ -703,7 +703,7 @@ async function loadAtt(regno) {
       </div>
       <div class="st-att-stats">
         ${statBox(
-          `${pNum.toFixed(1)}%`
+          pNum.toFixed(1),
           `Present Days`,
           'fas fa-check',
           'rgba(16,185,129,0.14)',
@@ -712,7 +712,7 @@ async function loadAtt(regno) {
           
         )}
         ${statBox(
-          `${aNum.toFixed(1)}%`,
+          aNum.toFixed(1)
           `Absent Days`,
           'fas fa-times',
           'rgba(244,63,94,0.14)',
