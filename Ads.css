@@ -1,0 +1,286 @@
+/* ==============================
+   FLOATING ADS WIDGET — Premium v1
+   Shows on Home page, right side, after a short delay.
+   ============================== */
+
+.ads-floating-wrap {
+  position: fixed;
+  top: 50%;
+  right: 18px;
+  transform: translateY(-50%) translateX(120%);
+  width: min(260px, calc(100vw - 32px));
+  z-index: 7000;
+  opacity: 0;
+  transition: transform 0.55s cubic-bezier(0.34, 1.2, 0.64, 1),
+              opacity 0.55s ease;
+  pointer-events: none;
+}
+
+.ads-floating-wrap.show {
+  transform: translateY(-50%) translateX(0);
+  opacity: 1;
+  pointer-events: all;
+}
+
+.ads-floating-wrap.leaving {
+  transform: translateY(-50%) translateX(120%);
+  opacity: 0;
+}
+
+/* ── Card ──────────────────────────────────────────────────── */
+.ads-card {
+  position: relative;
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 18px 48px rgba(26,35,126,0.22), 0 4px 14px rgba(0,0,0,0.10);
+  overflow: hidden;
+  border: 1px solid rgba(0,0,0,0.05);
+  animation: adsFloat 4.5s ease-in-out infinite;
+  transition: box-shadow 0.35s ease, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.ads-card:hover {
+  box-shadow: 0 24px 60px rgba(26,35,126,0.30), 0 6px 18px rgba(0,0,0,0.14);
+  transform: scale(1.02);
+  animation-play-state: paused;
+}
+
+@keyframes adsFloat {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-8px); }
+}
+
+/* Glow ring pulse to draw attention */
+.ads-card::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2), var(--accent));
+  background-size: 200% auto;
+  z-index: -1;
+  opacity: 0.55;
+  animation: adsGlowShift 5s linear infinite;
+}
+
+@keyframes adsGlowShift {
+  to { background-position: 200% center; }
+}
+
+/* ── Close button ──────────────────────────────────────────── */
+.ads-close-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(8,10,28,0.55);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,0.25);
+  color: white;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 3;
+  transition: all 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.ads-close-btn:hover {
+  background: var(--danger, #f44336);
+  transform: rotate(90deg) scale(1.12);
+}
+
+/* ── "Ad" badge ────────────────────────────────────────────── */
+.ads-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(8,10,28,0.55);
+  backdrop-filter: blur(6px);
+  color: #a5f3b0;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 50px;
+  z-index: 3;
+  border: 1px solid rgba(255,255,255,0.18);
+}
+
+/* ── Image ─────────────────────────────────────────────────── */
+.ads-img-wrap {
+  position: relative;
+  width: 100%;
+  height: 130px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.ads-img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.6s ease;
+}
+
+.ads-card:hover .ads-img-wrap img {
+  transform: scale(1.08);
+}
+
+.ads-img-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 50%, rgba(13,21,85,0.55) 100%);
+  pointer-events: none;
+}
+
+/* ── Body ──────────────────────────────────────────────────── */
+.ads-body {
+  padding: 14px 16px 16px;
+}
+
+.ads-title {
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: var(--primary);
+  margin-bottom: 6px;
+  line-height: 1.3;
+}
+
+.ads-desc {
+  font-size: 0.80rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+  margin-bottom: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ads-cta-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 50px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(76,175,80,0.30);
+  transition: all 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.ads-cta-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 22px rgba(76,175,80,0.42);
+  background: linear-gradient(135deg, var(--accent-dark), var(--accent));
+}
+
+.ads-cta-btn i {
+  transition: transform 0.25s ease;
+}
+
+.ads-cta-btn:hover i {
+  transform: translateX(3px);
+}
+
+/* ── Progress dots (multi-ad rotation) ───────────────────────── */
+.ads-dots {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.ads-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.ads-dot.active {
+  background: var(--accent);
+  width: 16px;
+  border-radius: 4px;
+}
+
+/* ── Mini collapsed launcher (after close) ───────────────────── */
+.ads-launcher {
+  position: fixed;
+  bottom: 96px;
+  right: 22px;
+  z-index: 6999;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--primary-light));
+  color: white;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(26,35,126,0.36);
+  opacity: 0;
+  transform: scale(0.6);
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+}
+
+.ads-launcher.show {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: all;
+  animation: adsLauncherPulse 2.6s ease-in-out infinite;
+}
+
+@keyframes adsLauncherPulse {
+  0%, 100% { box-shadow: 0 8px 24px rgba(26,35,126,0.36), 0 0 0 0 rgba(76,175,80,0.0); }
+  50%      { box-shadow: 0 8px 24px rgba(26,35,126,0.36), 0 0 0 10px rgba(76,175,80,0.18); }
+}
+
+.ads-launcher:hover {
+  transform: scale(1.1);
+}
+
+/* ── Responsive ────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .ads-floating-wrap {
+    right: 50%;
+    transform: translateX(50%) translateY(120%);
+    bottom: 86px;
+    top: auto;
+    width: min(300px, calc(100vw - 32px));
+  }
+  .ads-floating-wrap.show {
+    transform: translateX(50%) translateY(0);
+  }
+  .ads-floating-wrap.leaving {
+    transform: translateX(50%) translateY(120%);
+  }
+  .ads-launcher {
+    bottom: 86px;
+    right: 16px;
+  }
+}
+
+@media (max-width: 420px) {
+  .ads-img-wrap { height: 110px; }
+}

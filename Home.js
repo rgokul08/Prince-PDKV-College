@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient.js'
-import { initFloatingAd } from './floatingAd.js'
+import { initFloatingAd } from './ads.js'
 import {
   initStickyHeader, initHamburger, initScrollAnimations,
   initCounters, initAuth, openAuthModal, logoutUser,
@@ -26,7 +26,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await loadGallery()
   await initAuth()
-  initFloatingAd() 
+ initFloatingAds() 
 
   document.getElementById('headerLoginBtn')
     ?.addEventListener('click', () => openAuthModal('login'))
