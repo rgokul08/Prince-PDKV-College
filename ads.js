@@ -14,15 +14,27 @@ let _currentIndex = 0
 let _rotateTimer  = null
 
 export async function initFloatingAds() {
-  // Only show on the home page
-  const isHome = document.body.dataset.page === 'home' ||
-                  location.pathname === '/' ||
-                  location.pathname.endsWith('index.html')
-  if (!isHome) return
+  console.log('[ads] initFloatingAds called')
 
-  // If user already dismissed this session, show only the small launcher
+  // Only show on the home page (robust check — works for "/", "/index.html",
+  // "" path, and trailing slashes)
+  const path = location.pathname.replace(/\/+$/, '') // strip trailing slash
+  const isHome =
+    path === '' ||
+    path === '/' ||
+    path.toLowerCase().endsWith('/index.html') ||
+    path.toLowerCase() === '/index'
+
+  console.log('[ads] location.pathname =', location.pathname, '| isHome =', isHome)
+
+  if (!isHome) {
+    console.log('[ads] Not home page — skipping ads widget.')
+    return
+  }
+
   const dismissed = sessionStorage.getItem(SESSION_KEY) === '1'
 
+  console.log('[ads] Fetching ads from Supabase...')
   const { data, error } = await supabase
     .from('ads')
     .select('*')
@@ -30,9 +42,11 @@ export async function initFloatingAds() {
     .order('priority', { ascending: false })
 
   if (error) {
-    console.warn('Ads load error:', error.message)
+    console.error('[ads] Supabase error loading ads:', error)
     return
   }
+
+  console.log('[ads] Raw ads from DB:', data)
 
   const now = new Date()
   _ads = (data || []).filter(ad => {
@@ -41,14 +55,23 @@ export async function initFloatingAds() {
     return true
   })
 
-  if (!_ads.length) return
+  console.log('[ads] Ads after date filtering:', _ads)
+
+  if (!_ads.length) {
+    console.warn('[ads] No active/valid ads found — widget will not show. Check the "ads" table and is_active / starts_at / ends_at columns.')
+    return
+  }
 
   injectMarkup()
 
   if (dismissed) {
     showLauncher()
+    console.log('[ads] Previously dismissed this session — showing launcher only.')
   } else {
-    setTimeout(() => showWidget(), SHOW_DELAY)
+    setTimeout(() => {
+      console.log('[ads] Showing widget now.')
+      showWidget()
+    }, SHOW_DELAY)
   }
 
   wireEvents()
@@ -91,6 +114,8 @@ function injectMarkup() {
   launcher.title = 'Show offers'
   launcher.innerHTML = '<i class="fas fa-gift"></i>'
   document.body.appendChild(launcher)
+
+  console.log('[ads] Markup injected into DOM.')
 }
 
 // ── RENDER CURRENT AD ───────────────────────────────────────
@@ -148,7 +173,6 @@ function goToAd(index) {
 
 function navigateToAd(ad) {
   if (!ad?.link_url) return
-  // Supports relative links like "Courses.html#admission" or full URLs
   window.location.href = ad.link_url
 }
 
@@ -206,36 +230,31 @@ function hideLauncher() {
 
 // ── EVENTS ──────────────────────────────────────────────────
 function wireEvents() {
-  // Close button — dismiss for this session, show mini launcher
   document.getElementById('adsCloseBtn')?.addEventListener('click', (e) => {
     e.stopPropagation()
     hideWidget({ remember: true })
   })
 
-  // Click image -> go to ad's linked page
   document.getElementById('adsImgWrap')?.addEventListener('click', () => {
     navigateToAd(_ads[_currentIndex])
   })
 
-  // Click CTA button -> go to ad's linked page
   document.getElementById('adsCtaBtn')?.addEventListener('click', () => {
     navigateToAd(_ads[_currentIndex])
   })
 
-  // Click the title/card body also navigates (nice UX, optional)
-  document.getElementById('adsTitle')?.addEventListener('click', () => {
-    navigateToAd(_ads[_currentIndex])
-  })
-  document.getElementById('adsTitle')?.style && (document.getElementById('adsTitle').style.cursor = 'pointer')
+  const titleEl = document.getElementById('adsTitle')
+  if (titleEl) {
+    titleEl.style.cursor = 'pointer'
+    titleEl.addEventListener('click', () => navigateToAd(_ads[_currentIndex]))
+  }
 
-  // Launcher reopens the widget
   document.getElementById('adsLauncher')?.addEventListener('click', () => {
     hideLauncher()
     showWidget()
     restartRotation()
   })
 
-  // Pause rotation while hovering the card
   const card = document.getElementById('adsCard')
   card?.addEventListener('mouseenter', stopRotation)
   card?.addEventListener('mouseleave', startRotation)
