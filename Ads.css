@@ -5,7 +5,7 @@
 
 .ads-floating-wrap {
   position: fixed;
-  top: 50%;
+  top: 15%;
   right: 18px;
   transform: translateY(-50%) translateX(120%);
   width: min(260px, calc(100vw - 32px));
