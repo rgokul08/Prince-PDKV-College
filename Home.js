@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient.js'
-import { initFloatingAd } from './ads.js'
+import { initFloatingAds } from './ads.js'
 import {
   initStickyHeader, initHamburger, initScrollAnimations,
   initCounters, initAuth, openAuthModal, logoutUser,
