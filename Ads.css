@@ -8,7 +8,8 @@
   top: 15%;
   right: 18px;
   transform: translateY(-50%) translateX(120%);
-  width: min(260px, calc(100vw - 32px));
+  /* RESPONSIVE CHANGE: Adjusted width to scale beautifully from phone to laptop */
+  width: min(320px, calc(100vw - 32px));
   z-index: 7000;
   opacity: 0;
   transition: transform 0.55s cubic-bezier(0.34, 1.2, 0.64, 1),
@@ -115,7 +116,8 @@
 .ads-img-wrap {
   position: relative;
   width: 100%;
-  height: 130px;
+  /* RESPONSIVE CHANGE: Removed fixed 130px height so the image scales dynamically with the card width */
+  aspect-ratio: 16 / 9;
   overflow: hidden;
   cursor: pointer;
 }
@@ -267,7 +269,8 @@
     transform: translateX(50%) translateY(120%);
     bottom: 86px;
     top: auto;
-    width: min(300px, calc(100vw - 32px));
+    /* RESPONSIVE CHANGE: Adjusted mobile width to make sure it scales down safely on smaller phones */
+    width: min(260px, calc(100vw - 32px));
   }
   .ads-floating-wrap.show {
     transform: translateX(50%) translateY(0);
@@ -282,5 +285,6 @@
 }
 
 @media (max-width: 420px) {
-  .ads-img-wrap { height: 110px; }
+  /* RESPONSIVE CHANGE: Changed height override to standard aspect ratio for perfect scaling */
+  .ads-img-wrap { aspect-ratio: 16 / 8.5; }
 }
